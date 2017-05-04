@@ -37,6 +37,7 @@ type GroupProcessor struct {
 	LoadSaver LoadSaver
 	loadPool  *wp.Pool
 	savePool  *wp.Pool
+	trackPool *wp.Pool
 
 	loadedOffsets   map[int32]int64
 	inFlightOffsets map[int32]map[int64]*sarama.ConsumerMessage
@@ -83,6 +84,7 @@ func (gp *GroupProcessor) New() (err error) {
 
 	gp.loadPool = wp.NewPool(id+".load", gp.NumLoadWorker, gp.loadWorker)
 	gp.savePool = wp.NewPool(id+".save", gp.NumSaveWorker, gp.saveWorker)
+	gp.trackPool = wp.NewPool(id+".track", 1, gp.trackWorker)
 
 	gp.loadedOffsets = make(map[int32]int64)
 	gp.inFlightOffsets = make(map[int32]map[int64]*sarama.ConsumerMessage)
@@ -124,12 +126,16 @@ func (gp *GroupProcessor) saveOffsets() {
 	fmt.Println(offsets)
 }
 
-func (gp *GroupProcessor) trackProgess() {
+func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
 	for {
 		select {
+		case <-w.Closer():
+			w.Done()
+			return
 		case n, ok := <-gp.kafka.consumer.Notifications():
 			if !ok {
-				return
+				gp.log.Warn("trying to read from closed notification channel")
+				continue
 			}
 			gp.log.WithFields(cue.Fields{
 				"added":    n.Claimed,
@@ -192,7 +198,7 @@ func (gp *GroupProcessor) loadWorker(w *wp.Worker) {
 			return
 		case msg, ok := <-gp.kafka.consumer.Messages():
 			if !ok {
-				gp.log.Warn("trying to read from closed worker channel")
+				gp.log.Warn("trying to read from closed consumer channel")
 				continue
 			}
 
@@ -246,7 +252,7 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 }
 
 func (gp *GroupProcessor) Run() {
-	go gp.trackProgess()
+	gp.trackPool.Run()
 	gp.savePool.Run()
 	gp.loadPool.Run()
 }
@@ -257,6 +263,9 @@ func (gp *GroupProcessor) Close() {
 
 	gp.log.Info("save pool shutdown")
 	gp.savePool.Close()
+
+	gp.log.Info("track pool shutdown")
+	gp.trackPool.Close()
 
 	gp.log.Info("save consumer offsets")
 	gp.saveOffsets()
