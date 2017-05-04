@@ -1,8 +1,11 @@
 hash: cf7ad84d521c51119c2403ad7620fd19e25198a00ba33e1fd076036f9431225b
-updated: 2017-05-03T11:23:01.763426011Z
+updated: 2017-05-04T13:08:34.476671043Z
 imports:
 - name: github.com/bobziuchkovski/cue
   version: 852726be06b5c373580e50301c29f53f642f65ec
+  subpackages:
+  - collector
+  - format
 - name: github.com/davecgh/go-spew
   version: 346938d642f2ec3594ed81d874461961cd0faa76
   subpackages:

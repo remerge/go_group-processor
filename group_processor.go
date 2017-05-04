@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -23,17 +24,22 @@ type LoadSaver interface {
 }
 
 type GroupProcessor struct {
-	Name    string
-	Brokers string
-	Topic   string
+	sync.RWMutex
 
-	GroupGen      int
+	Name     string
+	Brokers  string
+	Topic    string
+	GroupGen int
+
 	NumLoadWorker int
 	NumSaveWorker int
 
 	LoadSaver LoadSaver
 	loadPool  *wp.Pool
 	savePool  *wp.Pool
+
+	loadedOffsets   map[int32]int64
+	inFlightOffsets map[int32]map[int64]*sarama.ConsumerMessage
 
 	log cue.Logger
 
@@ -78,6 +84,9 @@ func (gp *GroupProcessor) New() (err error) {
 	gp.loadPool = wp.NewPool(id+".load", gp.NumLoadWorker, gp.loadWorker)
 	gp.savePool = wp.NewPool(id+".save", gp.NumSaveWorker, gp.saveWorker)
 
+	gp.loadedOffsets = make(map[int32]int64)
+	gp.inFlightOffsets = make(map[int32]map[int64]*sarama.ConsumerMessage)
+
 	prefix := fmt.Sprintf("group_processor,name=%s,topic=%s ",
 		gp.Name, gp.Topic)
 
@@ -86,6 +95,33 @@ func (gp *GroupProcessor) New() (err error) {
 	gp.saveErrors = metrics.GetOrRegisterCounter(prefix+"save_error", nil)
 
 	return nil
+}
+
+func (gp *GroupProcessor) saveOffsets() {
+	gp.RLock()
+	defer gp.RUnlock()
+
+	offsets := make(map[int32]int64)
+
+	// when all messages have been processed gp.inFlightOffsets is empty, so we
+	// use the latest loaded offset for commit instead
+	for partition, offset := range gp.loadedOffsets {
+		offsets[partition] = offset
+	}
+
+	for partition, offsetMap := range gp.inFlightOffsets {
+		for offset := range offsetMap {
+			if offsets[partition] == 0 || offset < offsets[partition] {
+				offsets[partition] = offset
+			}
+		}
+	}
+
+	for partition, offset := range offsets {
+		gp.kafka.consumer.MarkOffset(gp.Topic, partition, offset, "")
+	}
+
+	fmt.Println(offsets)
 }
 
 func (gp *GroupProcessor) trackProgess() {
@@ -100,6 +136,8 @@ func (gp *GroupProcessor) trackProgess() {
 				"current":  n.Current,
 				"released": n.Released,
 			}).Infof("group rebalance")
+		case <-time.After(10 * time.Second):
+			gp.saveOffsets()
 		}
 	}
 }
@@ -117,12 +155,30 @@ func msgId(processable GroupProcessable) int {
 	return rand.Int()
 }
 
+func (gp *GroupProcessor) storeLoadedOffset(msg *sarama.ConsumerMessage) {
+	gp.Lock()
+	defer gp.Unlock()
+
+	if gp.loadedOffsets[msg.Partition] < msg.Offset {
+		gp.loadedOffsets[msg.Partition] = msg.Offset
+	}
+
+	if gp.inFlightOffsets[msg.Partition] == nil {
+		gp.inFlightOffsets[msg.Partition] = make(
+			map[int64]*sarama.ConsumerMessage,
+		)
+	}
+
+	gp.inFlightOffsets[msg.Partition][msg.Offset] = msg
+}
+
 func (gp *GroupProcessor) loadMsg(msg *sarama.ConsumerMessage) error {
 	processable, err := gp.LoadSaver.Load(msg)
 	if err != nil {
 		return err
 	}
 
+	gp.storeLoadedOffset(msg)
 	gp.savePool.Send(msgId(processable), processable)
 
 	return nil
@@ -149,20 +205,22 @@ func (gp *GroupProcessor) loadWorker(w *wp.Worker) {
 	}
 }
 
-func (gp *GroupProcessor) saveMsg(msg interface{}) error {
-	processable := msg.(GroupProcessable)
+func (gp *GroupProcessor) saveMsg(value interface{}) error {
+	processable := value.(GroupProcessable)
 
 	err := gp.LoadSaver.Save(processable)
 	if err != nil {
 		return err
 	}
 
-	// TODO: decoupling of load and save will cause messages to be out
-	// of order. mark message might commit offsets that have not been
-	// processed.
-	gp.kafka.consumer.MarkMessage(processable.Msg(), "")
-
 	gp.processed.Inc(1)
+
+	gp.Lock()
+	defer gp.Unlock()
+
+	msg := processable.Msg()
+	delete(gp.inFlightOffsets[msg.Partition], msg.Offset)
+
 	return nil
 }
 
@@ -199,6 +257,9 @@ func (gp *GroupProcessor) Close() {
 
 	gp.log.Info("save pool shutdown")
 	gp.savePool.Close()
+
+	gp.log.Info("save consumer offsets")
+	gp.saveOffsets()
 
 	gp.log.Info("consumer group shutdown")
 	// #nosec
