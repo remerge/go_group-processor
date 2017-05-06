@@ -8,28 +8,13 @@ import (
 	"github.com/Shopify/sarama"
 )
 
-type testProcessable struct {
-	msg *sarama.ConsumerMessage
-}
-
-func (p *testProcessable) Msg() *sarama.ConsumerMessage {
-	return p.msg
-}
-
 type testLoadSaver struct {
+	DefaultLoadSaver
 	channel chan string
 }
 
-func (ls *testLoadSaver) Load(
-	msg *sarama.ConsumerMessage,
-) (GroupProcessable, error) {
-	return &testProcessable{
-		msg: msg,
-	}, nil
-}
-
-func (ls *testLoadSaver) Save(p GroupProcessable) error {
-	tp := p.(*testProcessable)
+func (ls *testLoadSaver) Save(p Processable) error {
+	tp := p.(*DefaultProcessable)
 	ls.channel <- string(tp.Msg().Value)
 	return nil
 }

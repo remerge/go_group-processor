@@ -14,15 +14,6 @@ import (
 	rand "github.com/remerge/go-xorshift"
 )
 
-type GroupProcessable interface {
-	Msg() *sarama.ConsumerMessage
-}
-
-type LoadSaver interface {
-	Load(*sarama.ConsumerMessage) (GroupProcessable, error)
-	Save(GroupProcessable) error
-}
-
 type GroupProcessor struct {
 	sync.RWMutex
 
@@ -148,7 +139,7 @@ func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
 	}
 }
 
-func msgId(processable GroupProcessable) int {
+func msgId(processable Processable) int {
 	key := processable.Msg().Key
 
 	if key != nil && len(key) > 0 {
@@ -212,7 +203,7 @@ func (gp *GroupProcessor) loadWorker(w *wp.Worker) {
 }
 
 func (gp *GroupProcessor) saveMsg(value interface{}) error {
-	processable := value.(GroupProcessable)
+	processable := value.(Processable)
 
 	err := gp.LoadSaver.Save(processable)
 	if err != nil {
