@@ -1,5 +1,5 @@
 hash: cf7ad84d521c51119c2403ad7620fd19e25198a00ba33e1fd076036f9431225b
-updated: 2017-05-04T13:08:34.476671043Z
+updated: 2017-06-29T18:40:49.642798801Z
 imports:
 - name: github.com/bobziuchkovski/cue
   version: 852726be06b5c373580e50301c29f53f642f65ec
@@ -7,11 +7,11 @@ imports:
   - collector
   - format
 - name: github.com/davecgh/go-spew
-  version: 346938d642f2ec3594ed81d874461961cd0faa76
+  version: 04cdfd42973bb9c8589fd6a731800cf222fde1a9
   subpackages:
   - spew
 - name: github.com/eapache/go-resiliency
-  version: b86b1ec0dd4209a588dc1285cdd471e73525c0b3
+  version: b1fe83b5b03f624450823b751b662259ffc6af70
   subpackages:
   - breaker
 - name: github.com/eapache/go-xerial-snappy
@@ -20,10 +20,8 @@ imports:
   version: 44cc805cf13205b55f69e14bcb69867d1ae92f98
 - name: github.com/golang/snappy
   version: 553a641470496b2327abcac10b36396bd98e45c9
-- name: github.com/klauspost/crc32
-  version: 1bab8b35b6bb565f92cbc97939610af9369f942a
 - name: github.com/pierrec/lz4
-  version: f5b77fd73d83122495309c0f459b810f83cc291f
+  version: 5a3d2245f97fc249850e7802e3c01fad02a1c316
 - name: github.com/pierrec/xxHash
   version: 5a004441f897722c627870a981d02b29924215fa
   subpackages:
@@ -35,6 +33,6 @@ imports:
 - name: github.com/remerge/go-xorshift
   version: d47546b42ea9c5e7794a31b3fac844a12f45e390
 - name: github.com/Shopify/sarama
-  version: 3a9b18d38f8dcedadfb3ab20bcd53ec3f320f87c
+  version: 4fceb07110ff2dd7b16a5cf4f45041dbd0bda97f
   repo: https://github.com/remerge/sarama
 testImports: []
