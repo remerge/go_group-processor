@@ -114,7 +114,7 @@ func (gp *GroupProcessor) saveOffsets() {
 		gp.kafka.consumer.MarkOffset(gp.Topic, partition, offset, "")
 	}
 
-	fmt.Println(offsets)
+	// fmt.Println(offsets) // debug message
 }
 
 func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
