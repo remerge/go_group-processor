@@ -113,8 +113,6 @@ func (gp *GroupProcessor) saveOffsets() {
 	for partition, offset := range offsets {
 		gp.kafka.consumer.MarkOffset(gp.Topic, partition, offset, "")
 	}
-
-	fmt.Println(offsets)
 }
 
 func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
