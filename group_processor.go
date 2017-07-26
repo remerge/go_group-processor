@@ -14,6 +14,7 @@ import (
 	rand "github.com/remerge/go-xorshift"
 )
 
+// GroupProcessor is a Kafka helper to read and process a Kafka topic
 type GroupProcessor struct {
 	sync.RWMutex
 
@@ -40,34 +41,38 @@ type GroupProcessor struct {
 		client   sarama.Client
 		consumer sarama.ConsumerGroup
 	}
+	CustomKafkaConfig *sarama.Config
 
 	processed  metrics.Counter
 	loadErrors metrics.Counter
 	saveErrors metrics.Counter
 }
 
+// New initializes the GroupProcessor once it's instantiated
 func (gp *GroupProcessor) New() (err error) {
 	id := fmt.Sprintf("%v.%v", gp.Name, gp.Topic)
 
 	gp.log = cue.NewLogger(id)
 
-	gp.kafka.config = sarama.NewConfig()
+	gp.kafka.config = gp.CustomKafkaConfig
+	if gp.kafka.config == nil {
+		gp.kafka.config = sarama.NewConfig()
+		gp.kafka.config.Consumer.MaxProcessingTime = 30 * time.Second
+		gp.kafka.config.Consumer.Offsets.Initial = sarama.OffsetOldest
+		gp.kafka.config.Group.Return.Notifications = true
+	}
+
 	gp.kafka.config.ClientID = id
 	gp.kafka.config.Version = sarama.V0_10_0_0
-	gp.kafka.config.Consumer.MaxProcessingTime = 30 * time.Second
-	gp.kafka.config.Consumer.Offsets.Initial = sarama.OffsetOldest
-	gp.kafka.config.Group.Return.Notifications = true
 
-	gp.kafka.client, err = sarama.NewClient(
-		strings.Split(gp.Brokers, ","), gp.kafka.config)
+	gp.kafka.client, err = sarama.NewClient(strings.Split(gp.Brokers, ","), gp.kafka.config)
 
 	if err != nil {
 		return err
 	}
 
 	group := fmt.Sprintf("%s.%s.%d", gp.Name, gp.Topic, gp.GroupGen)
-	gp.kafka.consumer, err = sarama.NewConsumerGroupFromClient(
-		gp.kafka.client, group, []string{gp.Topic})
+	gp.kafka.consumer, err = sarama.NewConsumerGroupFromClient(gp.kafka.client, group, []string{gp.Topic})
 
 	if err != nil {
 		return err
@@ -137,7 +142,7 @@ func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
 	}
 }
 
-func msgId(processable Processable) int {
+func msgID(processable Processable) int {
 	key := processable.Msg().Key
 
 	if key != nil && len(key) > 0 {
@@ -174,7 +179,7 @@ func (gp *GroupProcessor) loadMsg(msg *sarama.ConsumerMessage) error {
 	}
 
 	gp.storeLoadedOffset(msg)
-	gp.savePool.Send(msgId(processable), processable)
+	gp.savePool.Send(msgID(processable), processable)
 
 	return nil
 }
@@ -240,12 +245,14 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 	}
 }
 
+// Run the GroupProcessor consisting of trackPool, savePool and loadPool
 func (gp *GroupProcessor) Run() {
 	gp.trackPool.Run()
 	gp.savePool.Run()
 	gp.loadPool.Run()
 }
 
+// Close all pools, save offsets and close Kafka-connections
 func (gp *GroupProcessor) Close() {
 	gp.log.Info("load pool shutdown")
 	gp.loadPool.Close()
