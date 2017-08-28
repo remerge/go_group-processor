@@ -19,6 +19,13 @@ func (ls *testLoadSaver) Save(p Processable) error {
 	return nil
 }
 
+func (ls *testLoadSaver) Done(p Processable) bool {
+	ls.SetDefaults()
+	ls.Log.Infof("processed msg=%v", p.Msg())
+	return true
+
+}
+
 func assertEqual(t *testing.T, a interface{}, b interface{}, message string, args ...interface{}) {
 	if a != b {
 		t.Fatalf(message, args)
@@ -29,6 +36,9 @@ func TestGroupProcessor(t *testing.T) {
 	tls := &testLoadSaver{
 		channel: make(chan string),
 	}
+
+	tls.Name = "testLoadSaver"
+	tls.SetDefaults()
 
 	gp := &GroupProcessor{
 		Name:          "gp",
@@ -77,6 +87,9 @@ func TestGroupProcessor_with_CustomConfig(t *testing.T) {
 	tls := &testLoadSaver{
 		channel: make(chan string),
 	}
+
+	tls.Name = "testLoadSaver"
+	tls.SetDefaults()
 
 	config := sarama.NewConfig()
 	config.ClientID = "TEST"                             // ClientID will always be overridden

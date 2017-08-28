@@ -19,7 +19,7 @@ type DefaultLoadSaver struct {
 	Log  cue.Logger
 }
 
-func (ls *DefaultLoadSaver) setDefaults() {
+func (ls *DefaultLoadSaver) SetDefaults() {
 	if ls.Name == "" {
 		ls.Name = fmt.Sprintf("DefaultLoadSaver:%p", ls)
 	}
@@ -50,7 +50,7 @@ func (ls *DefaultLoadSaver) Done(p Processable) bool {
 func (ls *DefaultLoadSaver) Fail(p Processable, err error) bool {
 	// log error and remove message from inflight
 	// override this method to implement a custom retry logic
-	ls.setDefaults()
+	ls.SetDefaults()
 	ls.Log.Error(err, "failed to process message")
 	return true
 }
