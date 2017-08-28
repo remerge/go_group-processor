@@ -2,9 +2,11 @@ package groupprocessor
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Shopify/sarama"
 	"github.com/bobziuchkovski/cue"
+	"github.com/cenkalti/backoff"
 )
 
 type LoadSaver interface {
@@ -18,6 +20,7 @@ type DefaultLoadSaver struct {
 	Name       string
 	Log        cue.Logger
 	MaxRetries int
+	ebo        *backoff.ExponentialBackOff
 }
 
 func (ls *DefaultLoadSaver) SetDefaults() {
@@ -27,6 +30,10 @@ func (ls *DefaultLoadSaver) SetDefaults() {
 
 	if ls.Log == nil {
 		ls.Log = cue.NewLogger(ls.Name)
+	}
+
+	if ls.ebo == nil {
+		ls.ebo = backoff.NewExponentialBackOff()
 	}
 }
 
@@ -52,16 +59,21 @@ func (ls *DefaultLoadSaver) Done(p Processable) bool {
 func (ls *DefaultLoadSaver) Fail(p Processable, err error) bool {
 	dp := p.(*DefaultProcessable)
 
-	// TODO: add backoff handling?
 	if dp.retries < ls.MaxRetries {
 		dp.retries++
+
+		nextBackOff := ls.ebo.NextBackOff()
 
 		ls.Log.WithFields(cue.Fields{
 			"msg":     dp.msg,
 			"error":   err,
 			"retries": dp.retries,
+			"backoff": nextBackOff,
 		}).Warn("retrying message after failure")
 
+		time.Sleep(nextBackOff)
+
+		// group processor will call save again
 		return false
 	}
 
@@ -69,5 +81,6 @@ func (ls *DefaultLoadSaver) Fail(p Processable, err error) bool {
 		"msg": dp.msg,
 	}).Error(err, "skipping message after all retries")
 
+	// message was processed and will be removed from inflight
 	return true
 }

@@ -1,13 +1,15 @@
-hash: cf7ad84d521c51119c2403ad7620fd19e25198a00ba33e1fd076036f9431225b
-updated: 2017-06-29T18:40:49.642798801Z
+hash: e42fc237d102b478cc17364aca8e9c9cc92fb13666fd349de87d9fa500ac51a2
+updated: 2017-08-28T18:51:35.438447632Z
 imports:
 - name: github.com/bobziuchkovski/cue
   version: 852726be06b5c373580e50301c29f53f642f65ec
   subpackages:
   - collector
   - format
+- name: github.com/cenkalti/backoff
+  version: 61153c768f31ee5f130071d08fc82b85208528de
 - name: github.com/davecgh/go-spew
-  version: 04cdfd42973bb9c8589fd6a731800cf222fde1a9
+  version: adab96458c51a58dc1783b3335dcce5461522e75
   subpackages:
   - spew
 - name: github.com/eapache/go-resiliency
@@ -23,16 +25,20 @@ imports:
 - name: github.com/pierrec/lz4
   version: 5a3d2245f97fc249850e7802e3c01fad02a1c316
 - name: github.com/pierrec/xxHash
-  version: 5a004441f897722c627870a981d02b29924215fa
+  version: a0006b13c722f7f12368c00a3d3c2ae8a999a0c6
   subpackages:
   - xxHash32
 - name: github.com/rcrowley/go-metrics
   version: 1f30fe9094a513ce4c700b9a54458bbb0c96996c
 - name: github.com/remerge/go-worker_pool
-  version: 4cf6a6108168cdb3035fae55a87c33f892dc6077
+  version: d4f606471016f25de9bdfeb339ba88642345ac18
 - name: github.com/remerge/go-xorshift
-  version: d47546b42ea9c5e7794a31b3fac844a12f45e390
+  version: d6a5f4fd89a9c0f6352888f3c7d40eceac1e26d3
 - name: github.com/Shopify/sarama
   version: 4fceb07110ff2dd7b16a5cf4f45041dbd0bda97f
   repo: https://github.com/remerge/sarama
+- name: golang.org/x/net
+  version: 57efc9c3d9f91fb3277f8da1cff370539c4d3dc5
+  subpackages:
+  - context
 testImports: []

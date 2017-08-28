@@ -1,6 +1,7 @@
 package groupprocessor
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -20,10 +21,8 @@ func (ls *testLoadSaver) Save(p Processable) error {
 }
 
 func (ls *testLoadSaver) Done(p Processable) bool {
-	ls.SetDefaults()
 	ls.Log.Infof("processed msg=%v", p.Msg())
 	return true
-
 }
 
 func assertEqual(t *testing.T, a interface{}, b interface{}, message string, args ...interface{}) {
@@ -38,7 +37,6 @@ func TestGroupProcessor(t *testing.T) {
 	}
 
 	tls.Name = "testLoadSaver"
-	tls.SetDefaults()
 
 	gp := &GroupProcessor{
 		Name:          "gp",
@@ -74,13 +72,77 @@ L:
 		// drain channel
 		case msg = <-tls.channel:
 			fmt.Printf("msg=%#v\n", msg)
-		case <-time.After(100 * time.Millisecond):
 			gp.Close()
 			break L
 		}
 	}
 
 	assertEqual(t, msg, "test", "expected message to equal \"true\", got %#v", msg)
+}
+
+type testLoadErrorSaver struct {
+	testLoadSaver
+	channel chan *DefaultProcessable
+}
+
+func (ls *testLoadErrorSaver) Save(p Processable) error {
+	tp := p.(*DefaultProcessable)
+	if tp.retries > 0 {
+		ls.channel <- tp
+	} else {
+		return errors.New("test error")
+	}
+	return nil
+}
+
+func TestGroupProcessorWithErrorRetry(t *testing.T) {
+	tls := &testLoadErrorSaver{
+		channel: make(chan *DefaultProcessable),
+	}
+
+	tls.Name = "testLoadErrorSaver"
+	tls.MaxRetries = 1
+
+	gp := &GroupProcessor{
+		Name:          "gp",
+		Brokers:       "localhost:9092",
+		Topic:         "test",
+		NumLoadWorker: 4,
+		NumSaveWorker: 4,
+		LoadSaver:     tls,
+	}
+
+	if err := gp.New(); err != nil {
+		t.Errorf("Unexpected error in gp.New: %v", err)
+		return
+	}
+
+	gp.Run()
+
+	producer, err := sarama.NewSyncProducer([]string{"localhost:9092"}, nil)
+	assertEqual(t, err, nil, "Unexpected error in NewSyncProducer: %v", err)
+
+	_, _, err = producer.SendMessage(&sarama.ProducerMessage{
+		Topic: "test",
+		Value: sarama.StringEncoder("test"),
+	})
+
+	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
+
+	var tp *DefaultProcessable
+
+L:
+	for {
+		select {
+		// drain channel
+		case tp = <-tls.channel:
+			fmt.Printf("msg=%#v\n", string(tp.Msg().Value))
+			gp.Close()
+			break L
+		}
+	}
+
+	assertEqual(t, tp.retries, 1, "expected message to be retried once, got %#v", tp.retries)
 }
 
 func TestGroupProcessor_with_CustomConfig(t *testing.T) {
@@ -137,7 +199,6 @@ L:
 		// drain channel
 		case msg = <-tls.channel:
 			fmt.Printf("msg=%#v\n", msg)
-		case <-time.After(100 * time.Millisecond):
 			gp.Close()
 			break L
 		}
