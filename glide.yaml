@@ -6,3 +6,4 @@ import:
 - package: github.com/rcrowley/go-metrics
 - package: github.com/remerge/go-worker_pool
 - package: github.com/remerge/go-xorshift
+- package: github.com/cenkalti/backoff

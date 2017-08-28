@@ -9,7 +9,6 @@ import (
 
 	"github.com/Shopify/sarama"
 	"github.com/bobziuchkovski/cue"
-	metrics "github.com/rcrowley/go-metrics"
 	wp "github.com/remerge/go-worker_pool"
 	rand "github.com/remerge/go-xorshift"
 )
@@ -41,11 +40,8 @@ type GroupProcessor struct {
 		client   sarama.Client
 		consumer sarama.ConsumerGroup
 	}
-	CustomKafkaConfig *sarama.Config
 
-	processed  metrics.Counter
-	loadErrors metrics.Counter
-	saveErrors metrics.Counter
+	CustomKafkaConfig *sarama.Config
 }
 
 // New initializes the GroupProcessor once it's instantiated
@@ -65,14 +61,21 @@ func (gp *GroupProcessor) New() (err error) {
 	gp.kafka.config.ClientID = id
 	gp.kafka.config.Version = sarama.V0_10_0_0
 
-	gp.kafka.client, err = sarama.NewClient(strings.Split(gp.Brokers, ","), gp.kafka.config)
+	gp.kafka.client, err = sarama.NewClient(
+		strings.Split(gp.Brokers, ","),
+		gp.kafka.config,
+	)
 
 	if err != nil {
 		return err
 	}
 
 	group := fmt.Sprintf("%s.%s.%d", gp.Name, gp.Topic, gp.GroupGen)
-	gp.kafka.consumer, err = sarama.NewConsumerGroupFromClient(gp.kafka.client, group, []string{gp.Topic})
+	gp.kafka.consumer, err = sarama.NewConsumerGroupFromClient(
+		gp.kafka.client,
+		group,
+		[]string{gp.Topic},
+	)
 
 	if err != nil {
 		return err
@@ -84,13 +87,6 @@ func (gp *GroupProcessor) New() (err error) {
 
 	gp.loadedOffsets = make(map[int32]int64)
 	gp.inFlightOffsets = make(map[int32]map[int64]*sarama.ConsumerMessage)
-
-	prefix := fmt.Sprintf("group_processor,name=%s,topic=%s ",
-		gp.Name, gp.Topic)
-
-	gp.processed = metrics.GetOrRegisterCounter(prefix+"msg", nil)
-	gp.loadErrors = metrics.GetOrRegisterCounter(prefix+"load_error", nil)
-	gp.saveErrors = metrics.GetOrRegisterCounter(prefix+"save_error", nil)
 
 	return nil
 }
@@ -121,9 +117,12 @@ func (gp *GroupProcessor) saveOffsets() {
 }
 
 func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
+	t := time.NewTicker(gp.kafka.config.Consumer.Offsets.CommitInterval)
+
 	for {
 		select {
 		case <-w.Closer():
+			t.Stop()
 			w.Done()
 			return
 		case n, ok := <-gp.kafka.consumer.Notifications():
@@ -136,7 +135,7 @@ func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
 				"current":  n.Current,
 				"released": n.Released,
 			}).Infof("group rebalance")
-		case <-time.After(10 * time.Second):
+		case <-t.C:
 			gp.saveOffsets()
 		}
 	}
@@ -172,16 +171,13 @@ func (gp *GroupProcessor) storeLoadedOffset(msg *sarama.ConsumerMessage) {
 	gp.inFlightOffsets[msg.Partition][msg.Offset] = msg
 }
 
-func (gp *GroupProcessor) loadMsg(msg *sarama.ConsumerMessage) error {
-	processable, err := gp.LoadSaver.Load(msg)
-	if err != nil {
-		return err
+func (gp *GroupProcessor) loadMsg(msg *sarama.ConsumerMessage) {
+	processable := gp.LoadSaver.Load(msg)
+
+	if processable != nil {
+		gp.storeLoadedOffset(msg)
+		gp.savePool.Send(msgID(processable), processable)
 	}
-
-	gp.storeLoadedOffset(msg)
-	gp.savePool.Send(msgID(processable), processable)
-
-	return nil
 }
 
 func (gp *GroupProcessor) loadWorker(w *wp.Worker) {
@@ -196,32 +192,36 @@ func (gp *GroupProcessor) loadWorker(w *wp.Worker) {
 				continue
 			}
 
-			if err := gp.loadMsg(msg); err != nil {
-				// #nosec
-				gp.log.Error(err, "load failed")
-				gp.loadErrors.Inc(1)
-			}
+			gp.loadMsg(msg)
 		}
 	}
 }
 
-func (gp *GroupProcessor) saveMsg(value interface{}) error {
-	processable := value.(Processable)
-
-	err := gp.LoadSaver.Save(processable)
-	if err != nil {
-		return err
-	}
-
-	gp.processed.Inc(1)
-
+func (gp *GroupProcessor) removeLoadedOffset(processable Processable) {
 	gp.Lock()
 	defer gp.Unlock()
 
 	msg := processable.Msg()
 	delete(gp.inFlightOffsets[msg.Partition], msg.Offset)
+}
 
-	return nil
+func (gp *GroupProcessor) saveMsg(value interface{}) {
+	processable := value.(Processable)
+	err := gp.LoadSaver.Save(processable)
+
+	var processed bool
+	if err != nil {
+		processed = gp.LoadSaver.Fail(processable, err)
+	} else {
+		processed = gp.LoadSaver.Done(processable)
+	}
+
+	if processed {
+		gp.removeLoadedOffset(processable)
+	} else {
+		// retry
+		gp.saveMsg(value)
+	}
 }
 
 func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
@@ -236,11 +236,7 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 				continue
 			}
 
-			if err := gp.saveMsg(msg); err != nil {
-				// #nosec
-				gp.log.Error(err, "save failed")
-				gp.saveErrors.Inc(1)
-			}
+			gp.saveMsg(msg)
 		}
 	}
 }
