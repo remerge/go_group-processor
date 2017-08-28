@@ -9,7 +9,8 @@ type Processable interface {
 
 // DefaultProcessable provides a vanilla implementation of the interface
 type DefaultProcessable struct {
-	msg *sarama.ConsumerMessage
+	msg     *sarama.ConsumerMessage
+	retries int
 }
 
 // Msg will return the enclosed saramaConsumerMessage

@@ -218,6 +218,9 @@ func (gp *GroupProcessor) saveMsg(value interface{}) {
 
 	if processed {
 		gp.removeLoadedOffset(processable)
+	} else {
+		// retry
+		gp.saveMsg(value)
 	}
 }
 
