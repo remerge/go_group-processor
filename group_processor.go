@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/bobziuchkovski/cue"
+	"github.com/remerge/cue"
 	wp "github.com/remerge/go-worker_pool"
 	rand "github.com/remerge/go-xorshift"
 )

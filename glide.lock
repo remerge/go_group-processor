@@ -1,11 +1,6 @@
-hash: e42fc237d102b478cc17364aca8e9c9cc92fb13666fd349de87d9fa500ac51a2
-updated: 2017-08-28T18:51:35.438447632Z
+hash: 3d8c79e175c1018c1eb34225fe100ff9d862f8f196a3460d24555ef743652b34
+updated: 2017-08-29T06:02:11.307807982Z
 imports:
-- name: github.com/bobziuchkovski/cue
-  version: 852726be06b5c373580e50301c29f53f642f65ec
-  subpackages:
-  - collector
-  - format
 - name: github.com/cenkalti/backoff
   version: 61153c768f31ee5f130071d08fc82b85208528de
 - name: github.com/davecgh/go-spew
@@ -23,22 +18,27 @@ imports:
 - name: github.com/golang/snappy
   version: 553a641470496b2327abcac10b36396bd98e45c9
 - name: github.com/pierrec/lz4
-  version: 5a3d2245f97fc249850e7802e3c01fad02a1c316
+  version: 08c27939df1bd95e881e2c2367a749964ad1fceb
 - name: github.com/pierrec/xxHash
   version: a0006b13c722f7f12368c00a3d3c2ae8a999a0c6
   subpackages:
   - xxHash32
 - name: github.com/rcrowley/go-metrics
   version: 1f30fe9094a513ce4c700b9a54458bbb0c96996c
+- name: github.com/remerge/cue
+  version: 69c896c02169b211510320825b6ef71ab62e579f
+  subpackages:
+  - collector
+  - format
 - name: github.com/remerge/go-worker_pool
-  version: d4f606471016f25de9bdfeb339ba88642345ac18
+  version: 6b17648557f55bb8f7c08361428a3972c5639ee4
 - name: github.com/remerge/go-xorshift
   version: d6a5f4fd89a9c0f6352888f3c7d40eceac1e26d3
 - name: github.com/Shopify/sarama
   version: 4fceb07110ff2dd7b16a5cf4f45041dbd0bda97f
   repo: https://github.com/remerge/sarama
 - name: golang.org/x/net
-  version: 57efc9c3d9f91fb3277f8da1cff370539c4d3dc5
+  version: 66aacef3dd8a676686c7ae3716979581e8b03c47
   subpackages:
   - context
 testImports: []

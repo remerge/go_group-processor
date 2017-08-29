@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/bobziuchkovski/cue"
 	"github.com/cenkalti/backoff"
+	"github.com/remerge/cue"
 )
 
 type LoadSaver interface {
