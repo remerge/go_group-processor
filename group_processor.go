@@ -91,38 +91,36 @@ func (gp *GroupProcessor) New() (err error) {
 	return nil
 }
 
-func (gp *GroupProcessor) SetOffsets(offsets map[int32]int64) {
+func (gp *GroupProcessor) SetOffset(partition int32, offset int64) error {
 	gp.RLock()
 	defer gp.RUnlock()
 
-	for partition, offset := range offsets {
-		oldest, err := gp.kafka.client.GetOffset(gp.Topic, partition, sarama.OffsetOldest)
+	oldest, err := gp.kafka.client.GetOffset(gp.Topic, partition, sarama.OffsetOldest)
 
-		if err != nil {
-			gp.log.Panicf(err, "Couldn't get offsets for %s/%d. Resuming from default offset", gp.Topic, partition)
-			continue
-		}
-
-		newest, err := gp.kafka.client.GetOffset(gp.Topic, partition, sarama.OffsetNewest)
-
-		if err != nil {
-			gp.log.Panicf(err, "Couldn't get offsets for %s/%d. Resuming from default offset", gp.Topic, partition)
-			continue
-		}
-
-		if offset < oldest {
-			gp.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d.", gp.Topic, partition, offset, oldest)
-			offset = oldest
-		}
-
-		if offset > newest {
-			gp.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d.", gp.Topic, partition, offset, newest)
-			offset = newest
-		}
-
-		gp.kafka.consumer.ResetOffset(gp.Topic, partition, offset, "")
-		gp.kafka.consumer.MarkOffset(gp.Topic, partition, offset, "")
+	if err != nil {
+		return err
 	}
+
+	newest, err := gp.kafka.client.GetOffset(gp.Topic, partition, sarama.OffsetNewest)
+
+	if err != nil {
+		return err
+	}
+
+	if offset < oldest {
+		gp.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d.", gp.Topic, partition, offset, oldest)
+		offset = oldest
+	}
+
+	if offset > newest {
+		gp.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d.", gp.Topic, partition, offset, newest)
+		offset = newest
+	}
+
+	gp.kafka.consumer.ResetOffset(gp.Topic, partition, offset, "")
+	gp.kafka.consumer.MarkOffset(gp.Topic, partition, offset, "")
+
+	return nil
 }
 
 func (gp *GroupProcessor) saveOffsets() {
