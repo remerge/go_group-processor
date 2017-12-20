@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/rcrowley/go-metrics"
 	"github.com/remerge/cue"
 	wp "github.com/remerge/go-worker_pool"
 	rand "github.com/remerge/go-xorshift"
@@ -56,6 +57,10 @@ func (gp *GroupProcessor) New() (err error) {
 		gp.kafka.config.Consumer.MaxProcessingTime = 30 * time.Second
 		gp.kafka.config.Consumer.Offsets.Initial = sarama.OffsetOldest
 		gp.kafka.config.Group.Return.Notifications = true
+		gp.kafka.config.MetricRegistry = metrics.NewPrefixedChildRegistry(
+			metrics.DefaultRegistry,
+			"group_processor kafka_",
+		)
 	}
 
 	gp.kafka.config.ClientID = id
