@@ -57,29 +57,50 @@ func (ls *DefaultLoadSaver) Done(p Processable) bool {
 }
 
 func (ls *DefaultLoadSaver) Fail(p Processable, err error) bool {
-	dp := p.(*DefaultProcessable)
+	if r, ok := p.(Retryable); ok {
+		return ls.FailWithRetry(
+			r,
+			err,
+			func(backoff time.Duration) {
+				ls.Log.WithFields(cue.Fields{
+					"msg":     r.Msg(),
+					"error":   err,
+					"retries": r.Retries(),
+					"backoff": backoff,
+				}).Warn("retrying message after failure")
+			},
+			func() {
+				ls.Log.WithFields(cue.Fields{
+					"msg": r.Msg(),
+				}).Error(err, "skipping message after all retries")
+			},
+		)
+	}
 
-	if dp.retries < ls.MaxRetries {
-		dp.retries++
+	ls.Log.WithFields(cue.Fields{
+		"msg": p.Msg(),
+	}).Error(err, "skipping non-retryable message")
+
+	return true
+}
+
+func (ls *DefaultLoadSaver) FailWithRetry(r Retryable, err error, onRetry func(time.Duration), onSkip func()) bool {
+	if r.Retries() < ls.MaxRetries {
+		r.Retry()
 
 		nextBackOff := ls.ebo.NextBackOff()
-
-		ls.Log.WithFields(cue.Fields{
-			"msg":     dp.msg,
-			"error":   err,
-			"retries": dp.retries,
-			"backoff": nextBackOff,
-		}).Warn("retrying message after failure")
-
+		if onRetry != nil {
+			onRetry(nextBackOff)
+		}
 		time.Sleep(nextBackOff)
 
 		// group processor will call save again
 		return false
 	}
 
-	ls.Log.WithFields(cue.Fields{
-		"msg": dp.msg,
-	}).Error(err, "skipping message after all retries")
+	if onSkip != nil {
+		onSkip()
+	}
 
 	// message was processed and will be removed from inflight
 	return true
