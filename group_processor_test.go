@@ -64,6 +64,7 @@ func TestGroupProcessor(t *testing.T) {
 
 	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
 
+	timeout := time.After(time.Second * 5)
 	var msg string
 
 L:
@@ -72,6 +73,7 @@ L:
 		// drain channel
 		case msg = <-tls.channel:
 			fmt.Printf("msg=%#v\n", msg)
+		case <-timeout:
 			gp.Close()
 			break L
 		}
@@ -129,6 +131,7 @@ func TestGroupProcessorWithErrorRetry(t *testing.T) {
 
 	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
 
+	timeout := time.After(time.Second * 5)
 	var tp *DefaultProcessable
 
 L:
@@ -137,6 +140,7 @@ L:
 		// drain channel
 		case tp = <-tls.channel:
 			fmt.Printf("msg=%#v\n", string(tp.Msg().Value))
+		case <-timeout:
 			gp.Close()
 			break L
 		}
@@ -191,6 +195,7 @@ func TestGroupProcessor_with_CustomConfig(t *testing.T) {
 
 	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
 
+	timeout := time.After(time.Second * 5)
 	var msg string
 
 L:
@@ -199,6 +204,7 @@ L:
 		// drain channel
 		case msg = <-tls.channel:
 			fmt.Printf("msg=%#v\n", msg)
+		case <-timeout:
 			gp.Close()
 			break L
 		}
