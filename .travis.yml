@@ -1,10 +1,15 @@
-sudo: false
+sudo: true
 language: go
 go:
 - 1.9.2
 cache:
   directories:
   - vendor
+services:
+- docker
+before_install:
+- docker pull spotify/kafka
+- docker run -d -p 2181:2181 -p 9092:9092 --env ADVERTISED_HOST=localhost --env ADVERTISED_PORT=9092 spotify/kafka
 install:
 - make dep
 script:
