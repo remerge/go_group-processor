@@ -3,7 +3,9 @@ package groupprocessor
 import (
 	"time"
 
+	metrics "github.com/rcrowley/go-metrics"
 	"github.com/remerge/cue"
+	lft "github.com/remerge/go-lock_free_timer"
 	wp "github.com/remerge/go-worker_pool"
 )
 
@@ -24,6 +26,11 @@ type GroupProcessor struct {
 	savePool  *wp.Pool
 	trackPool *wp.Pool
 
+	loaded    metrics.Timer
+	processed metrics.Timer
+	retries   metrics.Counter
+	skipped   metrics.Counter
+
 	log cue.Logger
 }
 
@@ -38,6 +45,11 @@ func (gp *GroupProcessor) New() (err error) {
 		gp.trackPool = wp.NewPool(gp.Name+".track", 1, gp.trackWorker)
 	}
 
+	gp.loaded = lft.GetOrRegisterLockFreeTimer(gp.Name+" loaded", nil)
+	gp.processed = lft.GetOrRegisterLockFreeTimer(gp.Name+" processed", nil)
+	gp.retries = metrics.GetOrRegisterCounter(gp.Name+" retry", nil)
+	gp.skipped = metrics.GetOrRegisterCounter(gp.Name+" skip", nil)
+
 	return nil
 }
 
@@ -51,12 +63,23 @@ func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
 			w.Done()
 			return
 		case <-t.C:
+			gp.log.WithFields(cue.Fields{
+				"loaded":      gp.loaded.Count(),
+				"load_p95":    gp.loaded.Percentile(0.95),
+				"processed":   gp.processed.Count(),
+				"process_p95": gp.processed.Percentile(0.95),
+				"retries":     gp.retries.Count(),
+				"skipped":     gp.skipped.Count(),
+			}).Infof("messages")
 			gp.Processor.OnTrack()
 		}
 	}
 }
 
 func (gp *GroupProcessor) loadMsg(msg interface{}) {
+	start := time.Now()
+	defer gp.loaded.UpdateSince(start)
+
 	processable := gp.LoadSaver.Load(msg)
 
 	if processable != nil {
@@ -84,6 +107,8 @@ func (gp *GroupProcessor) loadWorker(w *wp.Worker) {
 }
 
 func (gp *GroupProcessor) trySaveMsg(processable Processable) (err error) {
+	start := time.Now()
+
 	err = gp.LoadSaver.Save(processable)
 
 	var processed bool
@@ -95,6 +120,7 @@ func (gp *GroupProcessor) trySaveMsg(processable Processable) (err error) {
 
 	if processed {
 		gp.Processor.OnProcessed(processable)
+		gp.processed.UpdateSince(start)
 		return nil
 	}
 
@@ -110,6 +136,7 @@ func (gp *GroupProcessor) saveMsg(processable Processable) {
 
 	for i := 0; i < gp.MaxRetries; i++ {
 		gp.Processor.OnRetry(processable)
+		gp.retries.Inc(1)
 
 		if err = gp.trySaveMsg(processable); err == nil {
 			return
@@ -117,6 +144,7 @@ func (gp *GroupProcessor) saveMsg(processable Processable) {
 	}
 
 	gp.Processor.OnSkip(processable, err)
+	gp.skipped.Inc(1)
 }
 
 func (gp *GroupProcessor) saveWorker(w *wp.Worker) {

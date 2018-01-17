@@ -6,5 +6,6 @@ import:
 - package: github.com/cenkalti/backoff
 - package: github.com/rcrowley/go-metrics
 - package: github.com/remerge/cue
+- package: github.com/remerge/go-lock_free_timer
 - package: github.com/remerge/go-worker_pool
 - package: github.com/remerge/go-xorshift

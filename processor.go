@@ -18,13 +18,14 @@ type Processor interface {
 }
 
 type DefaultProcessor struct {
+	ID  string
 	ebo *backoff.ExponentialBackOff
 	log cue.Logger
 }
 
 func (p *DefaultProcessor) New() (err error) {
 	p.ebo = backoff.NewExponentialBackOff()
-	p.log = cue.NewLogger("DefaultProcessor")
+	p.log = cue.NewLogger(p.ID)
 	return nil
 }
 

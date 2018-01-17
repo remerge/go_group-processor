@@ -66,19 +66,15 @@ type SaramaProcessor struct {
 
 	loadedOffsets   map[int32]int64
 	inFlightOffsets map[int32]map[int64]*sarama.ConsumerMessage
-
-	log cue.Logger
 }
 
 // New initializes the SaramaProcessor once it's instantiated
 func (p *SaramaProcessor) New() (err error) {
+	p.ID = fmt.Sprintf("%v.%v", p.Name, p.Topic)
+
 	if err = p.DefaultProcessor.New(); err != nil {
 		return err
 	}
-
-	id := fmt.Sprintf("%v.%v", p.Name, p.Topic)
-
-	p.log = cue.NewLogger(id)
 
 	if p.Config == nil {
 		p.Config = sarama.NewConfig()
@@ -87,7 +83,7 @@ func (p *SaramaProcessor) New() (err error) {
 		p.Config.Group.Return.Notifications = true
 	}
 
-	p.Config.ClientID = id
+	p.Config.ClientID = p.ID
 	p.Config.Version = sarama.V0_10_0_0
 
 	p.client, err = sarama.NewClient(
@@ -111,7 +107,7 @@ func (p *SaramaProcessor) New() (err error) {
 	}
 
 	p.messages = make(chan interface{})
-	p.messagePool = wp.NewPool(id+".messages", 1, p.messageWorker)
+	p.messagePool = wp.NewPool(p.ID+".messages", 1, p.messageWorker)
 	p.messagePool.Run()
 
 	p.loadedOffsets = make(map[int32]int64)

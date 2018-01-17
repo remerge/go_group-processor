@@ -83,7 +83,7 @@ func TestGroupProcessor(t *testing.T) {
 		Processor:     p,
 		NumLoadWorker: 4,
 		NumSaveWorker: 4,
-		TrackInterval: 10,
+		TrackInterval: 1 * time.Second,
 		LoadSaver:     tls,
 	}
 
@@ -104,7 +104,7 @@ func TestGroupProcessor(t *testing.T) {
 
 	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
 
-	timeout := time.After(time.Second * 5)
+	timeout := time.After(1 * time.Second)
 	var msg string
 
 L:
@@ -172,7 +172,7 @@ func TestGroupProcessorWithErrorRetry(t *testing.T) {
 		MaxRetries:    1,
 		NumLoadWorker: 4,
 		NumSaveWorker: 4,
-		TrackInterval: 10,
+		TrackInterval: 1 * time.Second,
 		LoadSaver:     tls,
 	}
 
@@ -193,7 +193,7 @@ func TestGroupProcessorWithErrorRetry(t *testing.T) {
 
 	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
 
-	timeout := time.After(time.Second * 5)
+	timeout := time.After(1 * time.Second)
 	var tp *testProcessable
 
 L:
@@ -242,7 +242,7 @@ func TestGroupProcessor_with_CustomConfig(t *testing.T) {
 		Processor:     p,
 		NumLoadWorker: 4,
 		NumSaveWorker: 4,
-		TrackInterval: 10,
+		TrackInterval: 1 * time.Second,
 		LoadSaver:     tls,
 	}
 
@@ -268,7 +268,7 @@ func TestGroupProcessor_with_CustomConfig(t *testing.T) {
 
 	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
 
-	timeout := time.After(time.Second * 5)
+	timeout := time.After(1 * time.Second)
 	var msg string
 
 L:

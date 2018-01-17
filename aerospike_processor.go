@@ -22,6 +22,8 @@ type AerospikeProcessor struct {
 }
 
 func (p *AerospikeProcessor) New() (err error) {
+	p.ID = p.Name
+
 	if err = p.DefaultProcessor.New(); err != nil {
 		return err
 	}

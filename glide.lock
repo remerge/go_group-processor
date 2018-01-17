@@ -1,5 +1,5 @@
-hash: ec55898a92bb27dd213212dd408eb54714a576144367e40208055bdb1b3d759e
-updated: 2018-01-17T13:37:18.743097254Z
+hash: 97e02bc271faedf6dfc7e256e63c31d089efa91bed27bc913c168c1f5e882717
+updated: 2018-01-17T19:35:53.025736523Z
 imports:
 - name: github.com/aerospike/aerospike-client-go
   version: a769a21c4817057512f54a9718872175f3a48896
@@ -43,6 +43,8 @@ imports:
   subpackages:
   - collector
   - format
+- name: github.com/remerge/go-lock_free_timer
+  version: 198222a260ed873fd60f4b6014bcf4b550dcf01f
 - name: github.com/remerge/go-worker_pool
   version: 13fd6d47efa00aa9a6adbcbbd6fdca11949bb6af
 - name: github.com/remerge/go-xorshift
