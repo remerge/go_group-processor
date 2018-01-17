@@ -9,20 +9,48 @@ import (
 	"github.com/Shopify/sarama"
 )
 
+type testProcessable struct {
+	DefaultProcessable
+	retries int
+}
+
 type testLoadSaver struct {
 	DefaultLoadSaver
 	channel chan string
 }
 
-func (ls *testLoadSaver) Save(p Processable) error {
-	tp := p.(*DefaultProcessable)
-	ls.channel <- string(tp.Msg().Value)
+func (ls *testLoadSaver) New(name string) error {
+	if err := ls.DefaultLoadSaver.New(name); err != nil {
+		return err
+	}
+
+	ls.channel = make(chan string)
+
 	return nil
 }
 
+func (ls *testLoadSaver) Load(value interface{}) Processable {
+	return &testProcessable{
+		DefaultProcessable: DefaultProcessable{
+			value: value,
+		},
+	}
+}
+
+func (ls *testLoadSaver) Save(p Processable) error {
+	ls.channel <- string(p.Value().(*sarama.ConsumerMessage).Value)
+	return ls.DefaultLoadSaver.Save(p)
+}
+
 func (ls *testLoadSaver) Done(p Processable) bool {
-	ls.Log.Infof("processed msg=%v", p.Msg())
-	return true
+	ls.log.Infof("processed msg=%v", p.Value())
+	return ls.DefaultLoadSaver.Done(p)
+}
+
+func (ls *testLoadSaver) Fail(p Processable, err error) bool {
+	tp := p.(*testProcessable)
+	tp.retries++
+	return ls.DefaultLoadSaver.Fail(p, err)
 }
 
 func assertEqual(t *testing.T, a interface{}, b interface{}, message string, args ...interface{}) {
@@ -32,18 +60,30 @@ func assertEqual(t *testing.T, a interface{}, b interface{}, message string, arg
 }
 
 func TestGroupProcessor(t *testing.T) {
-	tls := &testLoadSaver{
-		channel: make(chan string),
+	tls := &testLoadSaver{}
+
+	if err := tls.New("testLoadSaver"); err != nil {
+		t.Errorf("Unexpected error in tls.New: %v", err)
+		return
 	}
 
-	tls.Name = "testLoadSaver"
+	p := &SaramaProcessor{
+		Name:    "processor",
+		Brokers: "localhost:9092",
+		Topic:   "test",
+	}
+
+	if err := p.New(); err != nil {
+		t.Errorf("Unexpected error in p.New: %v", err)
+		return
+	}
 
 	gp := &GroupProcessor{
 		Name:          "gp",
-		Brokers:       "localhost:9092",
-		Topic:         "test",
+		Processor:     p,
 		NumLoadWorker: 4,
 		NumSaveWorker: 4,
+		TrackInterval: 10,
 		LoadSaver:     tls,
 	}
 
@@ -79,16 +119,26 @@ L:
 		}
 	}
 
-	assertEqual(t, msg, "test", "expected message to equal \"true\", got %#v", msg)
+	assertEqual(t, msg, "test", "expected message to equal \"test\", got %#v", msg)
 }
 
 type testLoadErrorSaver struct {
 	testLoadSaver
-	channel chan *DefaultProcessable
+	channel chan *testProcessable
+}
+
+func (ls *testLoadErrorSaver) New(name string) error {
+	if err := ls.DefaultLoadSaver.New(name); err != nil {
+		return err
+	}
+
+	ls.channel = make(chan *testProcessable)
+
+	return nil
 }
 
 func (ls *testLoadErrorSaver) Save(p Processable) error {
-	tp := p.(*DefaultProcessable)
+	tp := p.(*testProcessable)
 	if tp.retries > 0 {
 		ls.channel <- tp
 	} else {
@@ -98,19 +148,31 @@ func (ls *testLoadErrorSaver) Save(p Processable) error {
 }
 
 func TestGroupProcessorWithErrorRetry(t *testing.T) {
-	tls := &testLoadErrorSaver{
-		channel: make(chan *DefaultProcessable),
+	tls := &testLoadErrorSaver{}
+
+	if err := tls.New("testLoadErrorSaver"); err != nil {
+		t.Errorf("Unexpected error in tls.New: %v", err)
+		return
 	}
 
-	tls.Name = "testLoadErrorSaver"
-	tls.MaxRetries = 1
+	p := &SaramaProcessor{
+		Name:    "processor",
+		Brokers: "localhost:9092",
+		Topic:   "test",
+	}
+
+	if err := p.New(); err != nil {
+		t.Errorf("Unexpected error in p.New: %v", err)
+		return
+	}
 
 	gp := &GroupProcessor{
 		Name:          "gp",
-		Brokers:       "localhost:9092",
-		Topic:         "test",
+		Processor:     p,
+		MaxRetries:    1,
 		NumLoadWorker: 4,
 		NumSaveWorker: 4,
+		TrackInterval: 10,
 		LoadSaver:     tls,
 	}
 
@@ -132,14 +194,14 @@ func TestGroupProcessorWithErrorRetry(t *testing.T) {
 	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
 
 	timeout := time.After(time.Second * 5)
-	var tp *DefaultProcessable
+	var tp *testProcessable
 
 L:
 	for {
 		select {
 		// drain channel
 		case tp = <-tls.channel:
-			fmt.Printf("msg=%#v\n", string(tp.Msg().Value))
+			fmt.Printf("msg=%#v\n", string(tp.Value().(*sarama.ConsumerMessage).Value))
 		case <-timeout:
 			gp.Close()
 			break L
@@ -150,12 +212,12 @@ L:
 }
 
 func TestGroupProcessor_with_CustomConfig(t *testing.T) {
-	tls := &testLoadSaver{
-		channel: make(chan string),
-	}
+	tls := &testLoadSaver{}
 
-	tls.Name = "testLoadSaver"
-	tls.SetDefaults()
+	if err := tls.New("testLoadSaver"); err != nil {
+		t.Errorf("Unexpected error in tls.New: %v", err)
+		return
+	}
 
 	config := sarama.NewConfig()
 	config.ClientID = "TEST"                             // ClientID will always be overridden
@@ -163,14 +225,25 @@ func TestGroupProcessor_with_CustomConfig(t *testing.T) {
 	config.Consumer.MaxProcessingTime = 30 * time.Second // everything will be set
 	config.Consumer.Offsets.Initial = sarama.OffsetNewest
 
+	p := &SaramaProcessor{
+		Name:    "p",
+		Brokers: "localhost:9092",
+		Topic:   "test",
+		Config:  config,
+	}
+
+	if err := p.New(); err != nil {
+		t.Errorf("Unexpected error in p.New: %v", err)
+		return
+	}
+
 	gp := &GroupProcessor{
-		Name:              "gp",
-		Brokers:           "localhost:9092",
-		Topic:             "test",
-		NumLoadWorker:     4,
-		NumSaveWorker:     4,
-		LoadSaver:         tls,
-		CustomKafkaConfig: config,
+		Name:          "gp",
+		Processor:     p,
+		NumLoadWorker: 4,
+		NumSaveWorker: 4,
+		TrackInterval: 10,
+		LoadSaver:     tls,
 	}
 
 	if err := gp.New(); err != nil {
@@ -178,10 +251,10 @@ func TestGroupProcessor_with_CustomConfig(t *testing.T) {
 		return
 	}
 
-	assertEqual(t, gp.kafka.config.ClientID, "gp.test", "ClientID should always be created as <Name>.<Topic>")
-	assertEqual(t, gp.kafka.config.Version, sarama.V0_10_0_0, "Version will always be set to V0_10_0_0")
-	assertEqual(t, gp.kafka.config.Consumer.MaxProcessingTime, 30*time.Second, "MaxProcessingTime should be 30s")
-	assertEqual(t, gp.kafka.config.Consumer.Offsets.Initial, sarama.OffsetNewest, "Offsets.Initial should be OffsetNewest")
+	assertEqual(t, p.Config.ClientID, "p.test", "ClientID should always be created as <Name>.<Topic>")
+	assertEqual(t, p.Config.Version, sarama.V0_10_0_0, "Version will always be set to V0_10_0_0")
+	assertEqual(t, p.Config.Consumer.MaxProcessingTime, 30*time.Second, "MaxProcessingTime should be 30s")
+	assertEqual(t, p.Config.Consumer.Offsets.Initial, sarama.OffsetNewest, "Offsets.Initial should be OffsetNewest")
 
 	gp.Run()
 
@@ -210,6 +283,6 @@ L:
 		}
 	}
 
-	assertEqual(t, msg, "test", "expected message to equal \"true\", got %#v", msg)
+	assertEqual(t, msg, "test", "expected message to equal \"test\", got %#v", msg)
 
 }
