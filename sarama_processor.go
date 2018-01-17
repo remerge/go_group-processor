@@ -64,8 +64,6 @@ type SaramaProcessor struct {
 	messages    chan interface{}
 	messagePool *wp.Pool
 
-	notifyPool *wp.Pool
-
 	loadedOffsets   map[int32]int64
 	inFlightOffsets map[int32]map[int64]*sarama.ConsumerMessage
 
@@ -113,35 +111,13 @@ func (p *SaramaProcessor) New() (err error) {
 	}
 
 	p.messages = make(chan interface{})
-	p.messagePool = wp.NewPool(id, 1, p.messageWorker)
+	p.messagePool = wp.NewPool(id+".messages", 1, p.messageWorker)
 	p.messagePool.Run()
-
-	p.notifyPool = wp.NewPool(id, 1, p.notifyWorker)
-	p.notifyPool.Run()
 
 	p.loadedOffsets = make(map[int32]int64)
 	p.inFlightOffsets = make(map[int32]map[int64]*sarama.ConsumerMessage)
 
 	return nil
-}
-
-func (p *SaramaProcessor) notifyWorker(w *wp.Worker) {
-	for {
-		select {
-		case <-w.Closer():
-			w.Done()
-			return
-		case n, ok := <-p.consumer.Notifications():
-			if !ok {
-				break
-			}
-			p.log.WithFields(cue.Fields{
-				"added":    n.Claimed,
-				"current":  n.Current,
-				"released": n.Released,
-			}).Infof("group rebalance")
-		}
-	}
 }
 
 func (p *SaramaProcessor) messageWorker(w *wp.Worker) {
@@ -158,6 +134,15 @@ func (p *SaramaProcessor) messageWorker(w *wp.Worker) {
 				w.Done()
 				return
 			}
+		case n, ok := <-p.consumer.Notifications():
+			if !ok {
+				break
+			}
+			p.log.WithFields(cue.Fields{
+				"added":    n.Claimed,
+				"current":  n.Current,
+				"released": n.Released,
+			}).Infof("group rebalance")
 		}
 	}
 }
@@ -223,9 +208,6 @@ func (p *SaramaProcessor) OnTrack() {
 func (p *SaramaProcessor) Close() {
 	p.log.Info("message pool shutdown")
 	p.messagePool.Close()
-
-	p.log.Info("message pool shutdown")
-	p.notifyPool.Close()
 
 	p.log.Info("save consumer offsets")
 	p.OnTrack()

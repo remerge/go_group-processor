@@ -1,14 +1,27 @@
-hash: 3d8c79e175c1018c1eb34225fe100ff9d862f8f196a3460d24555ef743652b34
-updated: 2017-12-05T13:42:33.361620412+01:00
+hash: ec55898a92bb27dd213212dd408eb54714a576144367e40208055bdb1b3d759e
+updated: 2018-01-17T13:37:18.743097254Z
 imports:
+- name: github.com/aerospike/aerospike-client-go
+  version: a769a21c4817057512f54a9718872175f3a48896
+  subpackages:
+  - internal/lua
+  - internal/lua/resources
+  - logger
+  - pkg/bcrypt
+  - pkg/ripemd160
+  - types
+  - types/atomic
+  - types/particle_type
+  - types/rand
+  - utils/buffer
 - name: github.com/cenkalti/backoff
-  version: 309aa717adbf351e92864cbedf9cca0b769a4b5a
+  version: 2ea60e5f094469f9e65adb9cd103795b73ae743e
 - name: github.com/davecgh/go-spew
   version: ecdeabc65495df2dec95d7c4a4c3e021903035e5
   subpackages:
   - spew
 - name: github.com/eapache/go-resiliency
-  version: b1fe83b5b03f624450823b751b662259ffc6af70
+  version: ef9aaa7ea8bd2448429af1a77cf41b2b3b34bdd6
   subpackages:
   - breaker
 - name: github.com/eapache/go-xerial-snappy
@@ -18,7 +31,7 @@ imports:
 - name: github.com/golang/snappy
   version: 553a641470496b2327abcac10b36396bd98e45c9
 - name: github.com/pierrec/lz4
-  version: 08c27939df1bd95e881e2c2367a749964ad1fceb
+  version: ed8d4cc3b461464e69798080a0092bd028910298
 - name: github.com/pierrec/xxHash
   version: a0006b13c722f7f12368c00a3d3c2ae8a999a0c6
   subpackages:
@@ -33,12 +46,18 @@ imports:
 - name: github.com/remerge/go-worker_pool
   version: 13fd6d47efa00aa9a6adbcbbd6fdca11949bb6af
 - name: github.com/remerge/go-xorshift
-  version: 311573fe0a94af7b7597258aaf1fc2fbee2db0d4
+  version: 930dc4b93c3a7faa6e3558a5b755ec6d9b536aa4
 - name: github.com/Shopify/sarama
   version: 919e11f89aedafea2adbc6c2d616760efb916872
   repo: https://github.com/remerge/sarama
+- name: github.com/yuin/gopher-lua
+  version: 478861c8ce6e8c2f16d5984d5ed30c4327c70437
+  subpackages:
+  - ast
+  - parse
+  - pm
 - name: golang.org/x/net
-  version: a8b9294777976932365dabb6640cf1468d95c70f
+  version: 5ccada7d0a7ba9aeb5d3aca8d3501b4c2a509fec
   subpackages:
   - context
 testImports: []

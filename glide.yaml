@@ -2,6 +2,7 @@ package: github.com/remerge/go-group_processor
 import:
 - package: github.com/Shopify/sarama
   repo: https://github.com/remerge/sarama
+- package: github.com/aerospike/aerospike-client-go
 - package: github.com/cenkalti/backoff
 - package: github.com/rcrowley/go-metrics
 - package: github.com/remerge/cue
