@@ -81,10 +81,14 @@ func (p *AerospikeProcessor) Messages() chan interface{} {
 	return p.messages
 }
 
+func (p *AerospikeProcessor) Wait() {
+	p.messagePool.Wait()
+}
+
 // Close all pools, save offsets and close Kafka-connections
 func (p *AerospikeProcessor) Close() {
 	p.log.Info("message pool shutdown")
-	p.messagePool.Close()
+	p.messagePool.CloseWait()
 
 	p.log.Info("scanner shutdown")
 	// nolint: errcheck
