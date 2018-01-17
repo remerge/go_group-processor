@@ -10,17 +10,17 @@ import (
 )
 
 type testProcessable struct {
-	DefaultProcessable
+	SaramaProcessable
 	retries int
 }
 
 type testLoadSaver struct {
-	DefaultLoadSaver
+	SaramaLoadSaver
 	channel chan string
 }
 
 func (ls *testLoadSaver) New(name string) error {
-	if err := ls.DefaultLoadSaver.New(name); err != nil {
+	if err := ls.SaramaLoadSaver.New(name); err != nil {
 		return err
 	}
 
@@ -31,26 +31,26 @@ func (ls *testLoadSaver) New(name string) error {
 
 func (ls *testLoadSaver) Load(value interface{}) Processable {
 	return &testProcessable{
-		DefaultProcessable: DefaultProcessable{
-			value: value,
+		SaramaProcessable: SaramaProcessable{
+			value: value.(*sarama.ConsumerMessage),
 		},
 	}
 }
 
 func (ls *testLoadSaver) Save(p Processable) error {
 	ls.channel <- string(p.Value().(*sarama.ConsumerMessage).Value)
-	return ls.DefaultLoadSaver.Save(p)
+	return ls.SaramaLoadSaver.Save(p)
 }
 
 func (ls *testLoadSaver) Done(p Processable) bool {
 	ls.log.Infof("processed msg=%v", p.Value())
-	return ls.DefaultLoadSaver.Done(p)
+	return ls.SaramaLoadSaver.Done(p)
 }
 
 func (ls *testLoadSaver) Fail(p Processable, err error) bool {
 	tp := p.(*testProcessable)
 	tp.retries++
-	return ls.DefaultLoadSaver.Fail(p, err)
+	return ls.SaramaLoadSaver.Fail(p, err)
 }
 
 func assertEqual(t *testing.T, a interface{}, b interface{}, message string, args ...interface{}) {
@@ -128,7 +128,7 @@ type testLoadErrorSaver struct {
 }
 
 func (ls *testLoadErrorSaver) New(name string) error {
-	if err := ls.DefaultLoadSaver.New(name); err != nil {
+	if err := ls.SaramaLoadSaver.New(name); err != nil {
 		return err
 	}
 

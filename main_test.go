@@ -10,8 +10,6 @@ import (
 	"github.com/remerge/cue/format"
 )
 
-var testLog = cue.NewLogger("test")
-
 func TestMain(m *testing.M) {
 	level := cue.DEBUG
 

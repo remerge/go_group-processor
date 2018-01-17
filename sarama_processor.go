@@ -2,6 +2,7 @@ package groupprocessor
 
 import (
 	"fmt"
+	"hash/fnv"
 	"strings"
 	"sync"
 	"time"
@@ -9,7 +10,39 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/remerge/cue"
 	wp "github.com/remerge/go-worker_pool"
+	rand "github.com/remerge/go-xorshift"
 )
+
+type SaramaProcessable struct {
+	value *sarama.ConsumerMessage
+}
+
+func (p *SaramaProcessable) Key() int {
+	key := p.value.Key
+
+	if len(key) > 0 {
+		hash := fnv.New64a()
+		// nolint: errcheck
+		hash.Write(key)
+		return int(hash.Sum64())
+	}
+
+	return rand.Int()
+}
+
+func (p *SaramaProcessable) Value() interface{} {
+	return p.value
+}
+
+type SaramaLoadSaver struct {
+	DefaultLoadSaver
+}
+
+func (ls *SaramaLoadSaver) Load(value interface{}) Processable {
+	return &SaramaProcessable{
+		value: value.(*sarama.ConsumerMessage),
+	}
+}
 
 // SaramaProcessor is a Processor that reads messages from a Kafka topic with a
 // group consumer and tracks offsets of processed messages
@@ -41,7 +74,7 @@ type SaramaProcessor struct {
 
 // New initializes the SaramaProcessor once it's instantiated
 func (p *SaramaProcessor) New() (err error) {
-	if err := p.DefaultProcessor.New(); err != nil {
+	if err = p.DefaultProcessor.New(); err != nil {
 		return err
 	}
 
@@ -91,19 +124,6 @@ func (p *SaramaProcessor) New() (err error) {
 
 	return nil
 }
-
-//func msgID(processable Processable) int {
-//    key := processable.Msg().Key
-
-//    if key != nil && len(key) > 0 {
-//        hash := fnv.New64a()
-//        // #nosec
-//        hash.Write(key)
-//        return int(hash.Sum64())
-//    }
-
-//    return rand.Int()
-//}
 
 func (p *SaramaProcessor) notifyWorker(w *wp.Worker) {
 	for {
@@ -211,11 +231,11 @@ func (p *SaramaProcessor) Close() {
 	p.OnTrack()
 
 	p.log.Info("consumer group shutdown")
-	// #nosec
+	// nolint: errcheck
 	p.log.Error(p.consumer.Close(), "consumer group shutdown failed")
 
 	p.log.Info("kafka client shutdown")
-	// #nosec
+	// nolint: errcheck
 	p.log.Error(p.client.Close(), "kafka client shutdown failed")
 
 	p.log.Infof("processor shutdown done")

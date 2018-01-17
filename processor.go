@@ -52,6 +52,7 @@ func (p *DefaultProcessor) OnRetry(processable Processable) {
 }
 
 func (p *DefaultProcessor) OnSkip(processable Processable, err error) {
+	// nolint: errcheck
 	p.log.WithFields(cue.Fields{
 		"value": processable.Value(),
 	}).Error(err, "skipping message after all retries")

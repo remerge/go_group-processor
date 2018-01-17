@@ -7,7 +7,7 @@ import (
 	wp "github.com/remerge/go-worker_pool"
 )
 
-// GroupProcessor can process messages in paralell using a LoadSaver and a
+// GroupProcessor can process messages in parallel using a LoadSaver and a
 // Processor implementation
 type GroupProcessor struct {
 	Name string

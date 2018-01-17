@@ -37,6 +37,7 @@ func (ls *DefaultLoadSaver) Done(p Processable) bool {
 }
 
 func (ls *DefaultLoadSaver) Fail(p Processable, err error) bool {
+	// nolint: errcheck
 	ls.log.WithFields(cue.Fields{
 		"value": p.Value(),
 	}).Error(err, "failed to process message")
