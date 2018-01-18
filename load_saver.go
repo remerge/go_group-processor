@@ -12,13 +12,13 @@ type LoadSaver interface {
 }
 
 type DefaultLoadSaver struct {
-	name string
+	Name string
 	log  cue.Logger
 }
 
 func (ls *DefaultLoadSaver) New(name string) error {
-	ls.name = name
-	ls.log = cue.NewLogger(ls.name)
+	ls.Name = name
+	ls.log = cue.NewLogger(ls.Name)
 	return nil
 }
 
