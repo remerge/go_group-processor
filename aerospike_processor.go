@@ -88,7 +88,7 @@ func (p *AerospikeProcessor) Wait() {
 // Close all pools, save offsets and close Kafka-connections
 func (p *AerospikeProcessor) Close() {
 	p.log.Info("message pool shutdown")
-	p.messagePool.CloseWait()
+	p.messagePool.Close()
 
 	p.log.Info("scanner shutdown")
 	// nolint: errcheck
