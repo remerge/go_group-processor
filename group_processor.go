@@ -173,6 +173,9 @@ func (gp *GroupProcessor) Run() {
 
 // Close all pools
 func (gp *GroupProcessor) Close() {
+	gp.log.Info("processor shutdown")
+	gp.Processor.Close()
+
 	gp.log.Info("load pool shutdown")
 	gp.loadPool.Close()
 
@@ -181,9 +184,6 @@ func (gp *GroupProcessor) Close() {
 
 	gp.log.Info("track pool shutdown")
 	gp.trackPool.Close()
-
-	gp.log.Info("processor shutdown")
-	gp.Processor.Close()
 
 	gp.log.Infof("group processor shutdown done")
 }
