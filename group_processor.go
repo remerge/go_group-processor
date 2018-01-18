@@ -5,7 +5,6 @@ import (
 
 	metrics "github.com/rcrowley/go-metrics"
 	"github.com/remerge/cue"
-	lft "github.com/remerge/go-lock_free_timer"
 	wp "github.com/remerge/go-worker_pool"
 )
 
@@ -45,8 +44,8 @@ func (gp *GroupProcessor) New() (err error) {
 		gp.trackPool = wp.NewPool(gp.Name+".track", 1, gp.trackWorker)
 	}
 
-	gp.loaded = lft.GetOrRegisterLockFreeTimer(gp.Name+" loaded", nil)
-	gp.processed = lft.GetOrRegisterLockFreeTimer(gp.Name+" processed", nil)
+	gp.loaded = metrics.GetOrRegisterTimer(gp.Name+" loaded", nil)
+	gp.processed = metrics.GetOrRegisterTimer(gp.Name+" processed", nil)
 	gp.retries = metrics.GetOrRegisterCounter(gp.Name+" retry", nil)
 	gp.skipped = metrics.GetOrRegisterCounter(gp.Name+" skip", nil)
 
@@ -66,8 +65,10 @@ func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
 			gp.log.WithFields(cue.Fields{
 				"loaded":      gp.loaded.Count(),
 				"load_p95":    gp.loaded.Percentile(0.95),
+				"load_m1":     gp.loaded.Rate1(),
 				"processed":   gp.processed.Count(),
 				"process_p95": gp.processed.Percentile(0.95),
+				"process_m1":  gp.processed.Rate1(),
 				"retries":     gp.retries.Count(),
 				"skipped":     gp.skipped.Count(),
 			}).Infof("messages")
