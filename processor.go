@@ -14,6 +14,7 @@ type Processor interface {
 	OnRetry(Processable)
 	OnSkip(Processable, error)
 	OnTrack()
+	Wait()
 	Close()
 }
 

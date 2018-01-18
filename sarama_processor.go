@@ -147,6 +147,10 @@ func (p *SaramaProcessor) Messages() chan interface{} {
 	return p.messages
 }
 
+func (p *SaramaProcessor) Wait() {
+	p.messagePool.Wait()
+}
+
 func (p *SaramaProcessor) OnLoad(processable Processable) {
 	msg := processable.Value().(*sarama.ConsumerMessage)
 
