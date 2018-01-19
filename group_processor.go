@@ -52,6 +52,19 @@ func (gp *GroupProcessor) New() (err error) {
 	return nil
 }
 
+func (gp *GroupProcessor) logMetrics() {
+	gp.log.WithFields(cue.Fields{
+		"loaded":      gp.loaded.Count(),
+		"load_p95":    time.Duration(int64(gp.loaded.Percentile(0.95))),
+		"load_m1":     int64(gp.loaded.Rate1()),
+		"processed":   gp.processed.Count(),
+		"process_p95": time.Duration(int64(gp.processed.Percentile(0.95))),
+		"process_m1":  int64(gp.processed.Rate1()),
+		"retries":     gp.retries.Count(),
+		"skipped":     gp.skipped.Count(),
+	}).Infof("messages")
+}
+
 func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
 	t := time.NewTicker(gp.TrackInterval)
 
@@ -62,16 +75,7 @@ func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
 			w.Done()
 			return
 		case <-t.C:
-			gp.log.WithFields(cue.Fields{
-				"loaded":      gp.loaded.Count(),
-				"load_p95":    gp.loaded.Percentile(0.95),
-				"load_m1":     gp.loaded.Rate1(),
-				"processed":   gp.processed.Count(),
-				"process_p95": gp.processed.Percentile(0.95),
-				"process_m1":  gp.processed.Rate1(),
-				"retries":     gp.retries.Count(),
-				"skipped":     gp.skipped.Count(),
-			}).Infof("messages")
+			gp.logMetrics()
 			gp.Processor.OnTrack()
 		}
 	}

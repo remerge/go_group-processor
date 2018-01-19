@@ -61,7 +61,6 @@ func (p *AerospikeProcessor) messageWorker(w *wp.Worker) {
 			if ok {
 				p.messages <- msg
 			} else {
-				p.log.Warn("trying to read from closed channel")
 				w.Done()
 				return
 			}

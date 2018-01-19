@@ -126,7 +126,6 @@ func (p *SaramaProcessor) messageWorker(w *wp.Worker) {
 			if ok {
 				p.messages <- msg
 			} else {
-				p.log.Warn("trying to read from closed channel")
 				w.Done()
 				return
 			}
@@ -206,9 +205,6 @@ func (p *SaramaProcessor) OnTrack() {
 
 // Close all pools, save offsets and close Kafka-connections
 func (p *SaramaProcessor) Close() {
-	p.log.Info("message pool shutdown")
-	p.messagePool.Close()
-
 	p.log.Info("save consumer offsets")
 	p.OnTrack()
 
@@ -219,6 +215,9 @@ func (p *SaramaProcessor) Close() {
 	p.log.Info("kafka client shutdown")
 	// nolint: errcheck
 	p.log.Error(p.client.Close(), "kafka client shutdown failed")
+
+	p.log.Info("message pool shutdown")
+	p.messagePool.Close()
 
 	p.log.Infof("processor shutdown done")
 }
