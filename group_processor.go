@@ -1,6 +1,7 @@
 package groupprocessor
 
 import (
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"strings"
@@ -91,7 +92,7 @@ func (gp *GroupProcessor) New() (err error) {
 	return nil
 }
 
-func (gp *GroupProcessor) SetOffset(partition int32, offset int64) error {
+func (gp *GroupProcessor) SetOffset(partition int32, offset int64, autoCorrectOffsets bool) error {
 	gp.RLock()
 	defer gp.RUnlock()
 
@@ -108,12 +109,22 @@ func (gp *GroupProcessor) SetOffset(partition int32, offset int64) error {
 	}
 
 	if offset < oldest {
-		gp.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d.", gp.Topic, partition, offset, oldest)
+		msg := fmt.Sprintf("Offset of %s/%d out of range. Corrected offset from %d to %d", gp.Topic, partition, offset, newest)
+		if !autoCorrectOffsets {
+			return errors.New(msg)
+		}
+
+		gp.log.Warn(msg)
 		offset = oldest
 	}
 
 	if offset > newest {
-		gp.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d.", gp.Topic, partition, offset, newest)
+		msg := fmt.Sprintf("Offset of %s/%d out of range. Corrected offset from %d to %d", gp.Topic, partition, offset, newest)
+		if !autoCorrectOffsets {
+			return errors.New(msg)
+		}
+
+		gp.log.Warn(msg)
 		offset = newest
 	}
 
