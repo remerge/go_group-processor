@@ -144,7 +144,7 @@ func (gp *GroupProcessor) saveOffsets() {
 	}
 
 	for partition, offset := range offsets {
-		gp.kafka.consumer.MarkOffset(gp.Topic, partition, offset, "")
+		gp.kafka.consumer.MarkOffset(gp.Topic, partition, offset+1, "")
 	}
 }
 
