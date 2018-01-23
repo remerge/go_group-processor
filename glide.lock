@@ -35,7 +35,7 @@ imports:
 - name: github.com/remerge/go-xorshift
   version: 311573fe0a94af7b7597258aaf1fc2fbee2db0d4
 - name: github.com/Shopify/sarama
-  version: 919e11f89aedafea2adbc6c2d616760efb916872
+  version: 2b50f5a58431a97d6b7d9b8bdf0a8b61183622b2
   repo: https://github.com/remerge/sarama
 - name: golang.org/x/net
   version: a8b9294777976932365dabb6640cf1468d95c70f
