@@ -13,12 +13,12 @@ type LoadSaver interface {
 
 type DefaultLoadSaver struct {
 	Name string
-	log  cue.Logger
+	Log  cue.Logger
 }
 
 func (ls *DefaultLoadSaver) New(name string) error {
 	ls.Name = name
-	ls.log = cue.NewLogger(ls.Name)
+	ls.Log = cue.NewLogger(ls.Name)
 	return nil
 }
 
@@ -38,7 +38,7 @@ func (ls *DefaultLoadSaver) Done(p Processable) bool {
 
 func (ls *DefaultLoadSaver) Fail(p Processable, err error) bool {
 	// nolint: errcheck
-	ls.log.WithFields(cue.Fields{
+	ls.Log.WithFields(cue.Fields{
 		"value": p.Value(),
 	}).Error(err, "failed to process message")
 
