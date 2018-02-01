@@ -1,7 +1,6 @@
 package groupprocessor
 
 import (
-	"errors"
 	"fmt"
 	"hash/fnv"
 	"strings"
@@ -109,22 +108,20 @@ func (gp *GroupProcessor) SetOffset(partition int32, offset int64, autoCorrectOf
 	}
 
 	if offset < oldest {
-		msg := fmt.Sprintf("Offset of %s/%d out of range. Corrected offset from %d to %d", gp.Topic, partition, offset, newest)
 		if !autoCorrectOffsets {
-			return errors.New(msg)
+			return fmt.Errorf("Requested offset %d out of range for %s/%d. Oldest available offset is %d", offset, gp.Topic, partition, oldest)
 		}
 
-		gp.log.Warn(msg)
+		gp.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d", gp.Topic, partition, offset, oldest)
 		offset = oldest
 	}
 
 	if offset > newest {
-		msg := fmt.Sprintf("Offset of %s/%d out of range. Corrected offset from %d to %d", gp.Topic, partition, offset, newest)
 		if !autoCorrectOffsets {
-			return errors.New(msg)
+			return fmt.Errorf("Requested offset %d out of range for %s/%d. Newest available offset is %d", offset, gp.Topic, partition, newest)
 		}
 
-		gp.log.Warn(msg)
+		gp.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d", gp.Topic, partition, offset, newest)
 		offset = newest
 	}
 
