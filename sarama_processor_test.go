@@ -43,7 +43,7 @@ func (ls *testLoadSaver) Save(p Processable) error {
 }
 
 func (ls *testLoadSaver) Done(p Processable) bool {
-	ls.log.Infof("processed msg=%v", p.Value())
+	ls.Log.Infof("processed msg=%v", p.Value())
 	return ls.SaramaLoadSaver.Done(p)
 }
 
@@ -209,80 +209,4 @@ L:
 	}
 
 	assertEqual(t, tp.retries, 1, "expected message to be retried once, got %#v", tp.retries)
-}
-
-func TestGroupProcessor_with_CustomConfig(t *testing.T) {
-	tls := &testLoadSaver{}
-
-	if err := tls.New("testLoadSaver"); err != nil {
-		t.Errorf("Unexpected error in tls.New: %v", err)
-		return
-	}
-
-	config := sarama.NewConfig()
-	config.ClientID = "TEST"                             // ClientID will always be overridden
-	config.Version = sarama.V0_8_2_0                     // Version will always be overridden
-	config.Consumer.MaxProcessingTime = 30 * time.Second // everything will be set
-	config.Consumer.Offsets.Initial = sarama.OffsetNewest
-
-	p := &SaramaProcessor{
-		Name:    "p",
-		Brokers: "localhost:9092",
-		Topic:   "test",
-		Config:  config,
-	}
-
-	if err := p.New(); err != nil {
-		t.Errorf("Unexpected error in p.New: %v", err)
-		return
-	}
-
-	gp := &GroupProcessor{
-		Name:          "gp",
-		Processor:     p,
-		NumLoadWorker: 4,
-		NumSaveWorker: 4,
-		TrackInterval: 1 * time.Second,
-		LoadSaver:     tls,
-	}
-
-	if err := gp.New(); err != nil {
-		t.Errorf("Unexpected error in gp.New: %v", err)
-		return
-	}
-
-	assertEqual(t, p.Config.ClientID, "p.test", "ClientID should always be created as <Name>.<Topic>")
-	assertEqual(t, p.Config.Version, sarama.V0_10_0_0, "Version will always be set to V0_10_0_0")
-	assertEqual(t, p.Config.Consumer.MaxProcessingTime, 30*time.Second, "MaxProcessingTime should be 30s")
-	assertEqual(t, p.Config.Consumer.Offsets.Initial, sarama.OffsetNewest, "Offsets.Initial should be OffsetNewest")
-
-	gp.Run()
-
-	producer, err := sarama.NewSyncProducer([]string{"localhost:9092"}, nil)
-	assertEqual(t, err, nil, "Unexpected error in NewSyncProducer: %v", err)
-
-	_, _, err = producer.SendMessage(&sarama.ProducerMessage{
-		Topic: "test",
-		Value: sarama.StringEncoder("test"),
-	})
-
-	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
-
-	timeout := time.After(1 * time.Second)
-	var msg string
-
-L:
-	for {
-		select {
-		// drain channel
-		case msg = <-tls.channel:
-			fmt.Printf("msg=%#v\n", msg)
-		case <-timeout:
-			gp.Close()
-			break L
-		}
-	}
-
-	assertEqual(t, msg, "test", "expected message to equal \"test\", got %#v", msg)
-
 }
