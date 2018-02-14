@@ -1,8 +1,8 @@
 hash: 97e02bc271faedf6dfc7e256e63c31d089efa91bed27bc913c168c1f5e882717
-updated: 2018-02-12T06:44:10.981535038Z
+updated: 2018-02-14T08:26:53.81684679Z
 imports:
 - name: github.com/aerospike/aerospike-client-go
-  version: a769a21c4817057512f54a9718872175f3a48896
+  version: 063f8b96bafba69f05de81d959123cb8e5a41e4e
   subpackages:
   - internal/lua
   - internal/lua/resources
@@ -39,16 +39,16 @@ imports:
 - name: github.com/rcrowley/go-metrics
   version: 8732c616f52954686704c8645fe1a9d59e9df7c1
 - name: github.com/remerge/cue
-  version: 2bf0689b2311d580f8c7182df1161899bbfc853f
+  version: 28dfe61cfc192ac3fce01cdead089ff01549cdfd
   subpackages:
   - collector
   - format
 - name: github.com/remerge/go-lock_free_timer
-  version: 198222a260ed873fd60f4b6014bcf4b550dcf01f
+  version: 3b39b49d2c6ad6286d6f0f392ffecc533d2623f9
 - name: github.com/remerge/go-worker_pool
-  version: c19fd1e86fe3003c85544a9b6d059398baa828bb
+  version: aa88cbe685343739bdaf7e8ddd86ea9146b64781
 - name: github.com/remerge/go-xorshift
-  version: 930dc4b93c3a7faa6e3558a5b755ec6d9b536aa4
+  version: 38a062789887270f4b85fd03a1756560552eed97
 - name: github.com/Shopify/sarama
   version: 293f3e8cc48504e0ae8bc229803a8f478ae1c2cd
   repo: https://github.com/remerge/sarama
