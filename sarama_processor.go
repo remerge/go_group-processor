@@ -38,6 +38,10 @@ func (p *SaramaProcessable) Value() interface{} {
 	return p.value
 }
 
+func (p *SaramaProcessable) Msg() *sarama.ConsumerMessage {
+	return p.value
+}
+
 type SaramaLoadSaver struct {
 	DefaultLoadSaver
 }

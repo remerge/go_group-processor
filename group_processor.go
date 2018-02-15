@@ -184,7 +184,9 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 
 // Run the GroupProcessor consisting of trackPool, savePool and loadPool
 func (gp *GroupProcessor) Run() {
-	gp.trackPool.Run()
+	if gp.trackPool != nil {
+		gp.trackPool.Run()
+	}
 	gp.savePool.Run()
 	gp.loadPool.Run()
 }
@@ -200,8 +202,11 @@ func (gp *GroupProcessor) Close() {
 	gp.log.Info("save pool shutdown")
 	gp.savePool.Close()
 
-	gp.log.Info("track pool shutdown")
-	gp.trackPool.Close()
+	if gp.trackPool != nil {
+		gp.log.Info("track pool shutdown")
+		gp.trackPool.Close()
+		gp.trackPool = nil
+	}
 
 	gp.log.Infof("group processor shutdown done")
 }
