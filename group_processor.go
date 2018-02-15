@@ -11,15 +11,7 @@ import (
 // GroupProcessor can process messages in parallel using a LoadSaver and a
 // Processor implementation
 type GroupProcessor struct {
-	Name string
-
-	Processor Processor
-	LoadSaver LoadSaver
-
-	MaxRetries    int
-	NumLoadWorker int
-	NumSaveWorker int
-	TrackInterval time.Duration
+	*Config
 
 	loadPool  *wp.Pool
 	savePool  *wp.Pool
@@ -33,8 +25,29 @@ type GroupProcessor struct {
 	log cue.Logger
 }
 
-// New initializes the GroupProcessor once it's instantiated
-func (gp *GroupProcessor) New() (err error) {
+// Config is the configuration for a GroupProcessor
+type Config struct {
+	Name string
+
+	MaxRetries    int
+	NumLoadWorker int
+	NumSaveWorker int
+	TrackInterval time.Duration
+
+	Processor Processor
+	LoadSaver LoadSaver
+}
+
+// New creates a new GroupProcessor
+func New(config *Config) (gp *GroupProcessor, err error) {
+	gp = &GroupProcessor{Config: config}
+	if err = gp.init(); err != nil {
+		return nil, err
+	}
+	return gp, nil
+}
+
+func (gp *GroupProcessor) init() (err error) {
 	gp.log = cue.NewLogger(gp.Name)
 
 	gp.loadPool = wp.NewPool(gp.Name+".load", gp.NumLoadWorker, gp.loadWorker)

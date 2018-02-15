@@ -67,27 +67,27 @@ func TestGroupProcessor(t *testing.T) {
 		return
 	}
 
-	p := &SaramaProcessor{
+	p, err := NewSaramaProcessor(&SaramaProcessorConfig{
 		Name:    "processor",
 		Brokers: "localhost:9092",
 		Topic:   "test",
-	}
+	})
 
-	if err := p.New(); err != nil {
+	if err != nil {
 		t.Errorf("Unexpected error in p.New: %v", err)
 		return
 	}
 
-	gp := &GroupProcessor{
+	gp, err := New(&Config{
 		Name:          "gp",
 		Processor:     p,
 		NumLoadWorker: 4,
 		NumSaveWorker: 4,
 		TrackInterval: 1 * time.Second,
 		LoadSaver:     tls,
-	}
+	})
 
-	if err := gp.New(); err != nil {
+	if err != nil {
 		t.Errorf("Unexpected error in gp.New: %v", err)
 		return
 	}
@@ -155,18 +155,18 @@ func TestGroupProcessorWithErrorRetry(t *testing.T) {
 		return
 	}
 
-	p := &SaramaProcessor{
+	p, err := NewSaramaProcessor(&SaramaProcessorConfig{
 		Name:    "processor",
 		Brokers: "localhost:9092",
 		Topic:   "test",
-	}
+	})
 
-	if err := p.New(); err != nil {
+	if err != nil {
 		t.Errorf("Unexpected error in p.New: %v", err)
 		return
 	}
 
-	gp := &GroupProcessor{
+	gp, err := New(&Config{
 		Name:          "gp",
 		Processor:     p,
 		MaxRetries:    1,
@@ -174,9 +174,9 @@ func TestGroupProcessorWithErrorRetry(t *testing.T) {
 		NumSaveWorker: 4,
 		TrackInterval: 1 * time.Second,
 		LoadSaver:     tls,
-	}
+	})
 
-	if err := gp.New(); err != nil {
+	if err != nil {
 		t.Errorf("Unexpected error in gp.New: %v", err)
 		return
 	}

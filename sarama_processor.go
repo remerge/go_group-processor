@@ -17,6 +17,10 @@ type SaramaProcessable struct {
 	value *sarama.ConsumerMessage
 }
 
+func NewSaramaProcessable(value *sarama.ConsumerMessage) *SaramaProcessable {
+	return &SaramaProcessable{value: value}
+}
+
 func (p *SaramaProcessable) Key() int {
 	key := p.value.Key
 
@@ -49,14 +53,9 @@ func (ls *SaramaLoadSaver) Load(value interface{}) Processable {
 type SaramaProcessor struct {
 	DefaultProcessor
 
+	*SaramaProcessorConfig
+
 	sync.RWMutex
-
-	Name     string
-	Brokers  string
-	Topic    string
-	GroupGen int
-
-	Config *sarama.Config
 
 	client   sarama.Client
 	consumer sarama.ConsumerGroup
@@ -68,8 +67,27 @@ type SaramaProcessor struct {
 	inFlightOffsets map[int32]map[int64]*sarama.ConsumerMessage
 }
 
+type SaramaProcessorConfig struct {
+	Name     string
+	Brokers  string
+	Topic    string
+	GroupGen int
+
+	Config *sarama.Config
+}
+
+// NewSaramaProcessor create a new SaramaProcessor which includes a Kafka group consumer as source
+// for messages for this processor look
+func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err error) {
+	p = &SaramaProcessor{SaramaProcessorConfig: config}
+	if err = p.init(); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
 // New initializes the SaramaProcessor once it's instantiated
-func (p *SaramaProcessor) New() (err error) {
+func (p *SaramaProcessor) init() (err error) {
 	p.ID = fmt.Sprintf("%v.%v", p.Name, p.Topic)
 
 	if err = p.DefaultProcessor.New(); err != nil {
