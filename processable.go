@@ -1,36 +1,26 @@
 package groupprocessor
 
-import "github.com/Shopify/sarama"
+import (
+	rand "github.com/remerge/go-xorshift"
+)
 
 // Processable is the message interface for the LoadSaver
 type Processable interface {
-	Msg() *sarama.ConsumerMessage
-}
-
-// Retryable is an interface for messages where saving can be retried
-type Retryable interface {
-	Processable
-	Retry()
-	Retries() int
+	Key() int
+	Value() interface{}
 }
 
 // DefaultProcessable provides a vanilla implementation of the interface
 type DefaultProcessable struct {
-	msg     *sarama.ConsumerMessage
-	retries int
+	value interface{}
 }
 
-// Msg returns the enclosed saramaConsumerMessage
-func (p *DefaultProcessable) Msg() *sarama.ConsumerMessage {
-	return p.msg
+// Key returns the message key
+func (p *DefaultProcessable) Key() int {
+	return rand.Int()
 }
 
-// Retry increments the number of save retries attempted
-func (p *DefaultProcessable) Retry() {
-	p.retries++
-}
-
-// Retries returns the number of save retries attempted
-func (p *DefaultProcessable) Retries() int {
-	return p.retries
+// Value returns the enclosed data/message
+func (p *DefaultProcessable) Value() interface{} {
+	return p.value
 }

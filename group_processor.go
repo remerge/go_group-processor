@@ -1,163 +1,85 @@
 package groupprocessor
 
 import (
-	"fmt"
-	"hash/fnv"
-	"strings"
-	"sync"
 	"time"
 
-	"github.com/Shopify/sarama"
+	metrics "github.com/rcrowley/go-metrics"
 	"github.com/remerge/cue"
 	wp "github.com/remerge/go-worker_pool"
-	rand "github.com/remerge/go-xorshift"
 )
 
-// GroupProcessor is a Kafka helper to read and process a Kafka topic
+// GroupProcessor can process messages in parallel using a LoadSaver and a
+// Processor implementation
 type GroupProcessor struct {
-	sync.RWMutex
+	*Config
 
-	Name     string
-	Brokers  string
-	Topic    string
-	GroupGen int
-
-	NumLoadWorker int
-	NumSaveWorker int
-
-	LoadSaver LoadSaver
 	loadPool  *wp.Pool
 	savePool  *wp.Pool
 	trackPool *wp.Pool
 
-	loadedOffsets   map[int32]int64
-	inFlightOffsets map[int32]map[int64]*sarama.ConsumerMessage
+	loaded    metrics.Timer
+	processed metrics.Timer
+	retries   metrics.Counter
+	skipped   metrics.Counter
 
 	log cue.Logger
-
-	kafka struct {
-		config   *sarama.Config
-		client   sarama.Client
-		consumer sarama.ConsumerGroup
-	}
-
-	CustomKafkaConfig *sarama.Config
 }
 
-// New initializes the GroupProcessor once it's instantiated
-func (gp *GroupProcessor) New() (err error) {
-	id := fmt.Sprintf("%v.%v", gp.Name, gp.Topic)
+// Config is the configuration for a GroupProcessor
+type Config struct {
+	Name string
 
-	gp.log = cue.NewLogger(id)
+	MaxRetries    int
+	NumLoadWorker int
+	NumSaveWorker int
+	TrackInterval time.Duration
 
-	gp.kafka.config = gp.CustomKafkaConfig
-	if gp.kafka.config == nil {
-		gp.kafka.config = sarama.NewConfig()
-		gp.kafka.config.Consumer.MaxProcessingTime = 30 * time.Second
-		gp.kafka.config.Consumer.Offsets.Initial = sarama.OffsetOldest
-		gp.kafka.config.Group.Return.Notifications = true
+	Processor Processor
+	LoadSaver LoadSaver
+}
+
+// New creates a new GroupProcessor
+func New(config *Config) (gp *GroupProcessor, err error) {
+	gp = &GroupProcessor{Config: config}
+	if err = gp.init(); err != nil {
+		return nil, err
+	}
+	return gp, nil
+}
+
+func (gp *GroupProcessor) init() (err error) {
+	gp.log = cue.NewLogger(gp.Name)
+
+	gp.loadPool = wp.NewPool(gp.Name+".load", gp.NumLoadWorker, gp.loadWorker)
+	gp.savePool = wp.NewPool(gp.Name+".save", gp.NumSaveWorker, gp.saveWorker)
+
+	if gp.TrackInterval > 0 {
+		gp.trackPool = wp.NewPool(gp.Name+".track", 1, gp.trackWorker)
 	}
 
-	gp.kafka.config.ClientID = id
-	gp.kafka.config.Version = sarama.V0_10_0_0
-
-	gp.kafka.client, err = sarama.NewClient(
-		strings.Split(gp.Brokers, ","),
-		gp.kafka.config,
-	)
-
-	if err != nil {
-		return err
-	}
-
-	group := fmt.Sprintf("%s.%s.%d", gp.Name, gp.Topic, gp.GroupGen)
-	gp.kafka.consumer, err = sarama.NewConsumerGroupFromClient(
-		gp.kafka.client,
-		group,
-		[]string{gp.Topic},
-	)
-
-	if err != nil {
-		return err
-	}
-
-	gp.loadPool = wp.NewPool(id+".load", gp.NumLoadWorker, gp.loadWorker)
-	gp.savePool = wp.NewPool(id+".save", gp.NumSaveWorker, gp.saveWorker)
-	gp.trackPool = wp.NewPool(id+".track", 1, gp.trackWorker)
-
-	gp.loadedOffsets = make(map[int32]int64)
-	gp.inFlightOffsets = make(map[int32]map[int64]*sarama.ConsumerMessage)
+	gp.loaded = metrics.GetOrRegisterTimer(gp.Name+" loaded", nil)
+	gp.processed = metrics.GetOrRegisterTimer(gp.Name+" processed", nil)
+	gp.retries = metrics.GetOrRegisterCounter(gp.Name+" retry", nil)
+	gp.skipped = metrics.GetOrRegisterCounter(gp.Name+" skip", nil)
 
 	return nil
 }
 
-func (gp *GroupProcessor) SetOffset(partition int32, offset int64, autoCorrectOffsets bool) error {
-	gp.RLock()
-	defer gp.RUnlock()
-
-	oldest, err := gp.kafka.client.GetOffset(gp.Topic, partition, sarama.OffsetOldest)
-
-	if err != nil {
-		return err
-	}
-
-	newest, err := gp.kafka.client.GetOffset(gp.Topic, partition, sarama.OffsetNewest)
-
-	if err != nil {
-		return err
-	}
-
-	if offset < oldest {
-		if !autoCorrectOffsets {
-			return fmt.Errorf("Requested offset %d out of range for %s/%d. Oldest available offset is %d", offset, gp.Topic, partition, oldest)
-		}
-
-		gp.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d", gp.Topic, partition, offset, oldest)
-		offset = oldest
-	}
-
-	if offset > newest {
-		if !autoCorrectOffsets {
-			return fmt.Errorf("Requested offset %d out of range for %s/%d. Newest available offset is %d", offset, gp.Topic, partition, newest)
-		}
-
-		gp.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d", gp.Topic, partition, offset, newest)
-		offset = newest
-	}
-
-	gp.kafka.consumer.ResetOffset(gp.Topic, partition, offset, "")
-	gp.kafka.consumer.MarkOffset(gp.Topic, partition, offset, "")
-
-	return nil
-}
-
-func (gp *GroupProcessor) saveOffsets() {
-	gp.RLock()
-	defer gp.RUnlock()
-
-	offsets := make(map[int32]int64)
-
-	// when all messages have been processed gp.inFlightOffsets is empty, so we
-	// use the latest loaded offset for commit instead
-	for partition, offset := range gp.loadedOffsets {
-		offsets[partition] = offset
-	}
-
-	for partition, offsetMap := range gp.inFlightOffsets {
-		for offset := range offsetMap {
-			if offsets[partition] == 0 || offset < offsets[partition] {
-				offsets[partition] = offset
-			}
-		}
-	}
-
-	for partition, offset := range offsets {
-		gp.kafka.consumer.MarkOffset(gp.Topic, partition, offset+1, "")
-	}
+func (gp *GroupProcessor) logMetrics() {
+	gp.log.WithFields(cue.Fields{
+		"loaded":      gp.loaded.Count(),
+		"load_p95":    time.Duration(int64(gp.loaded.Percentile(0.95))),
+		"load_m1":     int64(gp.loaded.Rate1()),
+		"processed":   gp.processed.Count(),
+		"process_p95": time.Duration(int64(gp.processed.Percentile(0.95))),
+		"process_m1":  int64(gp.processed.Rate1()),
+		"retries":     gp.retries.Count(),
+		"skipped":     gp.skipped.Count(),
+	}).Infof("messages")
 }
 
 func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
-	t := time.NewTicker(gp.kafka.config.Consumer.Offsets.CommitInterval)
+	t := time.NewTicker(gp.TrackInterval)
 
 	for {
 		select {
@@ -165,58 +87,22 @@ func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
 			t.Stop()
 			w.Done()
 			return
-		case n, ok := <-gp.kafka.consumer.Notifications():
-			if !ok {
-				gp.log.Warn("trying to read from closed notification channel")
-				continue
-			}
-			gp.log.WithFields(cue.Fields{
-				"added":    n.Claimed,
-				"current":  n.Current,
-				"released": n.Released,
-			}).Infof("group rebalance")
 		case <-t.C:
-			gp.saveOffsets()
+			gp.logMetrics()
+			gp.Processor.OnTrack()
 		}
 	}
 }
 
-func msgID(processable Processable) int {
-	key := processable.Msg().Key
+func (gp *GroupProcessor) loadMsg(msg interface{}) {
+	start := time.Now()
+	defer gp.loaded.UpdateSince(start)
 
-	if key != nil && len(key) > 0 {
-		hash := fnv.New64a()
-		// #nosec
-		hash.Write(key)
-		return int(hash.Sum64())
-	}
-
-	return rand.Int()
-}
-
-func (gp *GroupProcessor) storeLoadedOffset(msg *sarama.ConsumerMessage) {
-	gp.Lock()
-	defer gp.Unlock()
-
-	if gp.loadedOffsets[msg.Partition] < msg.Offset {
-		gp.loadedOffsets[msg.Partition] = msg.Offset
-	}
-
-	if gp.inFlightOffsets[msg.Partition] == nil {
-		gp.inFlightOffsets[msg.Partition] = make(
-			map[int64]*sarama.ConsumerMessage,
-		)
-	}
-
-	gp.inFlightOffsets[msg.Partition][msg.Offset] = msg
-}
-
-func (gp *GroupProcessor) loadMsg(msg *sarama.ConsumerMessage) {
 	processable := gp.LoadSaver.Load(msg)
 
 	if processable != nil {
-		gp.storeLoadedOffset(msg)
-		gp.savePool.Send(msgID(processable), processable)
+		gp.Processor.OnLoad(processable)
+		gp.savePool.Send(processable.Key(), processable)
 	}
 }
 
@@ -226,28 +112,22 @@ func (gp *GroupProcessor) loadWorker(w *wp.Worker) {
 		case <-w.Closer():
 			w.Done()
 			return
-		case msg, ok := <-gp.kafka.consumer.Messages():
-			if !ok {
-				gp.log.Warn("trying to read from closed consumer channel")
-				continue
+		case msg, ok := <-gp.Processor.Messages():
+			if ok {
+				gp.loadMsg(msg)
+			} else {
+				gp.log.Warn("trying to read from closed channel")
+				w.Done()
+				return
 			}
-
-			gp.loadMsg(msg)
 		}
 	}
 }
 
-func (gp *GroupProcessor) removeLoadedOffset(processable Processable) {
-	gp.Lock()
-	defer gp.Unlock()
+func (gp *GroupProcessor) trySaveMsg(processable Processable) (err error) {
+	start := time.Now()
 
-	msg := processable.Msg()
-	delete(gp.inFlightOffsets[msg.Partition], msg.Offset)
-}
-
-func (gp *GroupProcessor) saveMsg(value interface{}) {
-	processable := value.(Processable)
-	err := gp.LoadSaver.Save(processable)
+	err = gp.LoadSaver.Save(processable)
 
 	var processed bool
 	if err != nil {
@@ -257,11 +137,32 @@ func (gp *GroupProcessor) saveMsg(value interface{}) {
 	}
 
 	if processed {
-		gp.removeLoadedOffset(processable)
-	} else {
-		// retry
-		gp.saveMsg(value)
+		gp.Processor.OnProcessed(processable)
+		gp.processed.UpdateSince(start)
+		return nil
 	}
+
+	return err
+}
+
+func (gp *GroupProcessor) saveMsg(processable Processable) {
+	var err error
+
+	if err = gp.trySaveMsg(processable); err == nil {
+		return
+	}
+
+	for i := 0; i < gp.MaxRetries; i++ {
+		gp.Processor.OnRetry(processable)
+		gp.retries.Inc(1)
+
+		if err = gp.trySaveMsg(processable); err == nil {
+			return
+		}
+	}
+
+	gp.Processor.OnSkip(processable, err)
+	gp.skipped.Inc(1)
 }
 
 func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
@@ -276,39 +177,36 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 				continue
 			}
 
-			gp.saveMsg(msg)
+			gp.saveMsg(msg.(Processable))
 		}
 	}
 }
 
 // Run the GroupProcessor consisting of trackPool, savePool and loadPool
 func (gp *GroupProcessor) Run() {
-	gp.trackPool.Run()
+	if gp.trackPool != nil {
+		gp.trackPool.Run()
+	}
 	gp.savePool.Run()
 	gp.loadPool.Run()
 }
 
-// Close all pools, save offsets and close Kafka-connections
+// Close all pools
 func (gp *GroupProcessor) Close() {
+	gp.log.Info("processor shutdown")
+	gp.Processor.Close()
+
 	gp.log.Info("load pool shutdown")
 	gp.loadPool.Close()
 
 	gp.log.Info("save pool shutdown")
 	gp.savePool.Close()
 
-	gp.log.Info("track pool shutdown")
-	gp.trackPool.Close()
-
-	gp.log.Info("save consumer offsets")
-	gp.saveOffsets()
-
-	gp.log.Info("consumer group shutdown")
-	// #nosec
-	gp.log.Error(gp.kafka.consumer.Close(), "consumer group shutdown failed")
-
-	gp.log.Info("kafka client shutdown")
-	// #nosec
-	gp.log.Error(gp.kafka.client.Close(), "kafka client shutdown failed")
+	if gp.trackPool != nil {
+		gp.log.Info("track pool shutdown")
+		gp.trackPool.Close()
+		gp.trackPool = nil
+	}
 
 	gp.log.Infof("group processor shutdown done")
 }

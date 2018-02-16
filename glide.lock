@@ -1,14 +1,27 @@
-hash: 3d8c79e175c1018c1eb34225fe100ff9d862f8f196a3460d24555ef743652b34
-updated: 2017-12-05T13:42:33.361620412+01:00
+hash: 97e02bc271faedf6dfc7e256e63c31d089efa91bed27bc913c168c1f5e882717
+updated: 2018-02-14T08:26:53.81684679Z
 imports:
+- name: github.com/aerospike/aerospike-client-go
+  version: 063f8b96bafba69f05de81d959123cb8e5a41e4e
+  subpackages:
+  - internal/lua
+  - internal/lua/resources
+  - logger
+  - pkg/bcrypt
+  - pkg/ripemd160
+  - types
+  - types/atomic
+  - types/particle_type
+  - types/rand
+  - utils/buffer
 - name: github.com/cenkalti/backoff
-  version: 309aa717adbf351e92864cbedf9cca0b769a4b5a
+  version: 2ea60e5f094469f9e65adb9cd103795b73ae743e
 - name: github.com/davecgh/go-spew
-  version: ecdeabc65495df2dec95d7c4a4c3e021903035e5
+  version: 87df7c60d5820d0f8ae11afede5aa52325c09717
   subpackages:
   - spew
 - name: github.com/eapache/go-resiliency
-  version: b1fe83b5b03f624450823b751b662259ffc6af70
+  version: ef9aaa7ea8bd2448429af1a77cf41b2b3b34bdd6
   subpackages:
   - breaker
 - name: github.com/eapache/go-xerial-snappy
@@ -18,27 +31,35 @@ imports:
 - name: github.com/golang/snappy
   version: 553a641470496b2327abcac10b36396bd98e45c9
 - name: github.com/pierrec/lz4
-  version: 08c27939df1bd95e881e2c2367a749964ad1fceb
+  version: ed8d4cc3b461464e69798080a0092bd028910298
 - name: github.com/pierrec/xxHash
   version: a0006b13c722f7f12368c00a3d3c2ae8a999a0c6
   subpackages:
   - xxHash32
 - name: github.com/rcrowley/go-metrics
-  version: e181e095bae94582363434144c61a9653aff6e50
+  version: 8732c616f52954686704c8645fe1a9d59e9df7c1
 - name: github.com/remerge/cue
-  version: 2bf0689b2311d580f8c7182df1161899bbfc853f
+  version: 28dfe61cfc192ac3fce01cdead089ff01549cdfd
   subpackages:
   - collector
   - format
+- name: github.com/remerge/go-lock_free_timer
+  version: 3b39b49d2c6ad6286d6f0f392ffecc533d2623f9
 - name: github.com/remerge/go-worker_pool
-  version: 13fd6d47efa00aa9a6adbcbbd6fdca11949bb6af
+  version: aa88cbe685343739bdaf7e8ddd86ea9146b64781
 - name: github.com/remerge/go-xorshift
-  version: 311573fe0a94af7b7597258aaf1fc2fbee2db0d4
+  version: 38a062789887270f4b85fd03a1756560552eed97
 - name: github.com/Shopify/sarama
-  version: 2b50f5a58431a97d6b7d9b8bdf0a8b61183622b2
+  version: 293f3e8cc48504e0ae8bc229803a8f478ae1c2cd
   repo: https://github.com/remerge/sarama
+- name: github.com/yuin/gopher-lua
+  version: 7d7bc8747e3f614c5c587729a341fe7d8903cdb8
+  subpackages:
+  - ast
+  - parse
+  - pm
 - name: golang.org/x/net
-  version: a8b9294777976932365dabb6640cf1468d95c70f
+  version: f5dfe339be1d06f81b22525fe34671ee7d2c8904
   subpackages:
   - context
 testImports: []
