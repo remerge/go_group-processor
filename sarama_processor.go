@@ -90,6 +90,46 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 	return p, nil
 }
 
+func (p *SaramaProcessor) SetOffset(partition int32, offset int64, autoCorrectOffsets bool) error {
+	p.RLock()
+	defer p.RUnlock()
+
+	oldest, err := p.client.GetOffset(p.Topic, partition, sarama.OffsetOldest)
+
+	if err != nil {
+		return err
+	}
+
+	newest, err := p.client.GetOffset(p.Topic, partition, sarama.OffsetNewest)
+
+	if err != nil {
+		return err
+	}
+
+	if offset < oldest {
+		if !autoCorrectOffsets {
+			return fmt.Errorf("Requested offset %d out of range for %s/%d. Oldest available offset is %d", offset, p.Topic, partition, oldest)
+		}
+
+		p.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d", p.Topic, partition, offset, oldest)
+		offset = oldest
+	}
+
+	if offset > newest {
+		if !autoCorrectOffsets {
+			return fmt.Errorf("Requested offset %d out of range for %s/%d. Newest available offset is %d", offset, p.Topic, partition, newest)
+		}
+
+		p.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d", p.Topic, partition, offset, newest)
+		offset = newest
+	}
+
+	p.consumer.ResetOffset(p.Topic, partition, offset, "")
+	p.consumer.MarkOffset(p.Topic, partition, offset, "")
+
+	return nil
+}
+
 // New initializes the SaramaProcessor once it's instantiated
 func (p *SaramaProcessor) init() (err error) {
 	p.ID = fmt.Sprintf("%v.%v", p.Name, p.Topic)
@@ -221,7 +261,7 @@ func (p *SaramaProcessor) OnTrack() {
 	}
 
 	for partition, offset := range offsets {
-		p.consumer.MarkOffset(p.Topic, partition, offset, "")
+		p.consumer.MarkOffset(p.Topic, partition, offset+1, "")
 	}
 }
 
