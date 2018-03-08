@@ -59,22 +59,11 @@ func assertEqual(t *testing.T, a interface{}, b interface{}, message string, arg
 	}
 }
 
-func TestGroupProcessor(t *testing.T) {
+func testProcessing(t *testing.T, p Processor) {
 	tls := &testLoadSaver{}
 
 	if err := tls.New("testLoadSaver"); err != nil {
 		t.Errorf("Unexpected error in tls.New: %v", err)
-		return
-	}
-
-	p, err := NewSaramaProcessor(&SaramaProcessorConfig{
-		Name:    "processor",
-		Brokers: "localhost:9092",
-		Topic:   "test",
-	})
-
-	if err != nil {
-		t.Errorf("Unexpected error in p.New: %v", err)
 		return
 	}
 
@@ -147,22 +136,11 @@ func (ls *testLoadErrorSaver) Save(p Processable) error {
 	return nil
 }
 
-func TestGroupProcessorWithErrorRetry(t *testing.T) {
+func testRetry(t *testing.T, p Processor) {
 	tls := &testLoadErrorSaver{}
 
 	if err := tls.New("testLoadErrorSaver"); err != nil {
 		t.Errorf("Unexpected error in tls.New: %v", err)
-		return
-	}
-
-	p, err := NewSaramaProcessor(&SaramaProcessorConfig{
-		Name:    "processor",
-		Brokers: "localhost:9092",
-		Topic:   "test",
-	})
-
-	if err != nil {
-		t.Errorf("Unexpected error in p.New: %v", err)
 		return
 	}
 
@@ -193,7 +171,7 @@ func TestGroupProcessorWithErrorRetry(t *testing.T) {
 
 	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
 
-	timeout := time.After(1 * time.Second)
+	timeout := time.After(5 * time.Second)
 	var tp *testProcessable
 
 L:
@@ -209,4 +187,70 @@ L:
 	}
 
 	assertEqual(t, tp.retries, 1, "expected message to be retried once, got %#v", tp.retries)
+}
+
+func TestGroupProcessor(t *testing.T) {
+	p, err := NewSaramaGroupProcessor(&SaramaProcessorConfig{
+		Name:    "processor",
+		Brokers: "localhost:9092",
+		Topic:   "test",
+	})
+
+	if err != nil {
+		t.Errorf("Unexpected error in p.New: %v", err)
+		return
+	}
+
+	testProcessing(t, p)
+}
+
+func TestGroupProcessorWithErrorRetry(t *testing.T) {
+	p, err := NewSaramaGroupProcessor(&SaramaProcessorConfig{
+		Name:    "processor",
+		Brokers: "localhost:9092",
+		Topic:   "test",
+	})
+
+	if err != nil {
+		t.Errorf("Unexpected error in p.New: %v", err)
+		return
+	}
+
+	testRetry(t, p)
+}
+
+func TestTopicProcessor(t *testing.T) {
+	p, err := NewSaramaTopicProcessor(
+		make(map[int32]int64),
+		&SaramaProcessorConfig{
+			Name:    "processor",
+			Brokers: "localhost:9092",
+			Topic:   "test",
+		},
+	)
+
+	if err != nil {
+		t.Errorf("Unexpected error in p.New: %v", err)
+		return
+	}
+
+	testProcessing(t, p)
+}
+
+func TestTopicProcessorRetryOnError(t *testing.T) {
+	p, err := NewSaramaTopicProcessor(
+		make(map[int32]int64),
+		&SaramaProcessorConfig{
+			Name:    "processor",
+			Brokers: "localhost:9092",
+			Topic:   "test",
+		},
+	)
+
+	if err != nil {
+		t.Errorf("Unexpected error in p.New: %v", err)
+		return
+	}
+
+	testRetry(t, p)
 }
