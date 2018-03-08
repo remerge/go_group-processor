@@ -50,7 +50,7 @@ imports:
 - name: github.com/remerge/go-xorshift
   version: 38a062789887270f4b85fd03a1756560552eed97
 - name: github.com/Shopify/sarama
-  version: 293f3e8cc48504e0ae8bc229803a8f478ae1c2cd
+  version: 0c4819825cc56e480718c2fe495b16c2205e6536
   repo: https://github.com/remerge/sarama
 - name: github.com/yuin/gopher-lua
   version: 7d7bc8747e3f614c5c587729a341fe7d8903cdb8
