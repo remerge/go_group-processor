@@ -52,9 +52,9 @@ func (ls *SaramaLoadSaver) Load(value interface{}) Processable {
 	}
 }
 
-// SaramaProcessor is a Processor that reads messages from a Kafka topic with a
+// SaramaGroupProcessor is a Processor that reads messages from a Kafka topic with a
 // group consumer and tracks offsets of processed messages
-type SaramaProcessor struct {
+type SaramaGroupProcessor struct {
 	DefaultProcessor
 
 	*SaramaProcessorConfig
@@ -82,56 +82,16 @@ type SaramaProcessorConfig struct {
 
 // NewSaramaProcessor create a new SaramaProcessor which includes a Kafka group consumer as source
 // for messages for this processor look
-func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err error) {
-	p = &SaramaProcessor{SaramaProcessorConfig: config}
+func NewSaramaGroupProcessor(config *SaramaProcessorConfig) (p *SaramaGroupProcessor, err error) {
+	p = &SaramaGroupProcessor{SaramaProcessorConfig: config}
 	if err = p.init(); err != nil {
 		return nil, err
 	}
 	return p, nil
 }
 
-func (p *SaramaProcessor) SetOffset(partition int32, offset int64, autoCorrectOffsets bool) error {
-	p.RLock()
-	defer p.RUnlock()
-
-	oldest, err := p.client.GetOffset(p.Topic, partition, sarama.OffsetOldest)
-
-	if err != nil {
-		return err
-	}
-
-	newest, err := p.client.GetOffset(p.Topic, partition, sarama.OffsetNewest)
-
-	if err != nil {
-		return err
-	}
-
-	if offset < oldest {
-		if !autoCorrectOffsets {
-			return fmt.Errorf("Requested offset %d out of range for %s/%d. Oldest available offset is %d", offset, p.Topic, partition, oldest)
-		}
-
-		p.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d", p.Topic, partition, offset, oldest)
-		offset = oldest
-	}
-
-	if offset > newest {
-		if !autoCorrectOffsets {
-			return fmt.Errorf("Requested offset %d out of range for %s/%d. Newest available offset is %d", offset, p.Topic, partition, newest)
-		}
-
-		p.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d", p.Topic, partition, offset, newest)
-		offset = newest
-	}
-
-	p.consumer.ResetOffset(p.Topic, partition, offset, "")
-	p.consumer.MarkOffset(p.Topic, partition, offset, "")
-
-	return nil
-}
-
 // New initializes the SaramaProcessor once it's instantiated
-func (p *SaramaProcessor) init() (err error) {
+func (p *SaramaGroupProcessor) init() (err error) {
 	p.ID = fmt.Sprintf("%v.%v", p.Name, p.Topic)
 
 	if err = p.DefaultProcessor.New(); err != nil {
@@ -178,7 +138,7 @@ func (p *SaramaProcessor) init() (err error) {
 	return nil
 }
 
-func (p *SaramaProcessor) messageWorker(w *wp.Worker) {
+func (p *SaramaGroupProcessor) messageWorker(w *wp.Worker) {
 	for {
 		select {
 		case <-w.Closer():
@@ -204,15 +164,15 @@ func (p *SaramaProcessor) messageWorker(w *wp.Worker) {
 	}
 }
 
-func (p *SaramaProcessor) Messages() chan interface{} {
+func (p *SaramaGroupProcessor) Messages() chan interface{} {
 	return p.messages
 }
 
-func (p *SaramaProcessor) Wait() {
+func (p *SaramaGroupProcessor) Wait() {
 	p.messagePool.Wait()
 }
 
-func (p *SaramaProcessor) OnLoad(processable Processable) {
+func (p *SaramaGroupProcessor) OnLoad(processable Processable) {
 	msg := processable.Value().(*sarama.ConsumerMessage)
 
 	p.Lock()
@@ -231,7 +191,7 @@ func (p *SaramaProcessor) OnLoad(processable Processable) {
 	p.inFlightOffsets[msg.Partition][msg.Offset] = msg
 }
 
-func (p *SaramaProcessor) OnProcessed(processable Processable) {
+func (p *SaramaGroupProcessor) OnProcessed(processable Processable) {
 	msg := processable.Value().(*sarama.ConsumerMessage)
 
 	p.Lock()
@@ -240,7 +200,7 @@ func (p *SaramaProcessor) OnProcessed(processable Processable) {
 	delete(p.inFlightOffsets[msg.Partition], msg.Offset)
 }
 
-func (p *SaramaProcessor) OnTrack() {
+func (p *SaramaGroupProcessor) OnTrack() {
 	p.RLock()
 	defer p.RUnlock()
 
@@ -266,7 +226,7 @@ func (p *SaramaProcessor) OnTrack() {
 }
 
 // Close all pools, save offsets and close Kafka-connections
-func (p *SaramaProcessor) Close() {
+func (p *SaramaGroupProcessor) Close() {
 	p.log.Info("save consumer offsets")
 	p.OnTrack()
 
@@ -280,6 +240,108 @@ func (p *SaramaProcessor) Close() {
 
 	p.log.Info("message pool shutdown")
 	p.messagePool.Close()
+
+	p.log.Infof("processor shutdown done")
+}
+
+type SaramaTopicProcessor struct {
+	DefaultProcessor
+
+	*SaramaProcessorConfig
+
+	sync.RWMutex
+
+	client   sarama.Client
+	consumer sarama.TopicConsumer
+
+	messages    chan interface{}
+	messagePool *wp.Pool
+
+	initialOffsets map[int32]int64
+}
+
+func NewSaramaTopicProcessor(offsets map[int32]int64, config *SaramaProcessorConfig) (p *SaramaTopicProcessor, err error) {
+	p = &SaramaTopicProcessor{SaramaProcessorConfig: config, initialOffsets: offsets}
+	if err = p.init(); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (p *SaramaTopicProcessor) init() (err error) {
+	p.ID = fmt.Sprintf("%v.%v", p.Name, p.Topic)
+
+	if err = p.DefaultProcessor.New(); err != nil {
+		return err
+	}
+
+	if p.Config == nil {
+		p.Config = sarama.NewConfig()
+		p.Config.Consumer.MaxProcessingTime = 30 * time.Second
+		p.Config.Consumer.Offsets.Initial = sarama.OffsetOldest
+		p.Config.Group.Return.Notifications = true
+	}
+
+	p.Config.ClientID = p.ID
+	p.Config.Version = sarama.V0_10_0_0
+
+	p.client, err = sarama.NewClient(
+		strings.Split(p.Brokers, ","),
+		p.Config,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	p.consumer, err = sarama.NewTopicConsumer(p.client, p.Topic, p.initialOffsets)
+
+	if err != nil {
+		return err
+	}
+
+	p.messages = make(chan interface{})
+	p.messagePool = wp.NewPool(p.ID+".messages", 1, p.messageWorker)
+	p.messagePool.Run()
+
+	return nil
+}
+
+func (p *SaramaTopicProcessor) messageWorker(w *wp.Worker) {
+	for {
+		select {
+		case <-w.Closer():
+			w.Done()
+			return
+		case msg, ok := <-p.consumer.Messages():
+			if ok {
+				p.messages <- msg
+			} else {
+				w.Done()
+				return
+			}
+		}
+	}
+}
+
+func (p *SaramaTopicProcessor) Messages() chan interface{} {
+	return p.messages
+}
+
+func (p *SaramaTopicProcessor) Wait() {
+	p.messagePool.Wait()
+}
+
+// Close all pools, save offsets and close Kafka-connections
+func (p *SaramaTopicProcessor) Close() {
+	p.log.Info("message pool shutdown")
+	p.messagePool.Close()
+
+	p.log.Info("consumer shutdown")
+	p.log.Error(p.consumer.Close(), "consumer shutdown failed")
+
+	p.log.Info("sarama client shutdown")
+	p.client.Close()
 
 	p.log.Infof("processor shutdown done")
 }
