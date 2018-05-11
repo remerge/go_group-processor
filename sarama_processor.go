@@ -64,8 +64,9 @@ type SaramaProcessor struct {
 	client   sarama.Client
 	consumer sarama.ConsumerGroup
 
-	messages    chan interface{}
-	messagePool *wp.Pool
+	messages        chan interface{}
+	rebalanceDoneCh chan interface{}
+	messagePool     *wp.Pool
 
 	loadedOffsets   map[int32]int64
 	inFlightOffsets map[int32]map[int64]*sarama.ConsumerMessage
@@ -169,8 +170,12 @@ func (p *SaramaProcessor) init() (err error) {
 	}
 
 	p.messages = make(chan interface{})
+	p.rebalanceDoneCh = make(chan interface{})
 	p.messagePool = wp.NewPool(p.ID+".messages", 1, p.messageWorker)
 	p.messagePool.Run()
+	if p.Config.Group.Return.Notifications {
+		<-p.rebalanceDoneCh
+	}
 
 	p.loadedOffsets = make(map[int32]int64)
 	p.inFlightOffsets = make(map[int32]map[int64]*sarama.ConsumerMessage)
@@ -192,6 +197,7 @@ func (p *SaramaProcessor) messageWorker(w *wp.Worker) {
 				return
 			}
 		case n, ok := <-p.consumer.Notifications():
+			close(p.rebalanceDoneCh)
 			if !ok {
 				break
 			}
