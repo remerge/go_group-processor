@@ -35,7 +35,14 @@ func TestProcessorInit(t *testing.T) {
 	})
 	require.True(t, p.Config.Group.Return.Notifications)
 	require.Nil(t, err)
-	_, ok := <-p.firstRebalanceDoneCh
+	var ok, channelClosed bool
+	select {
+	case _, ok = <-p.firstRebalanceDoneCh:
+		channelClosed = true
+	default:
+		channelClosed = false
+	}
+	require.True(t, channelClosed)
 	require.False(t, ok)
 	require.NotPanics(t, p.Close)
 }
