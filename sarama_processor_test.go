@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/stretchr/testify/require"
 )
 
 type testProcessable struct {
@@ -17,6 +18,26 @@ type testProcessable struct {
 type testLoadSaver struct {
 	SaramaLoadSaver
 	channel chan string
+}
+
+func TestProcessorInit(t *testing.T) {
+	tls := &testLoadSaver{}
+
+	if err := tls.New("testLoadSaver"); err != nil {
+		t.Errorf("Unexpected error in tls.New: %v", err)
+		return
+	}
+
+	p, err := NewSaramaProcessor(&SaramaProcessorConfig{
+		Name:    "processor",
+		Brokers: "localhost:9092",
+		Topic:   "test",
+	})
+	require.True(t, p.Config.Group.Return.Notifications)
+	require.Nil(t, err)
+	_, ok := <-p.firstRebalanceDoneCh
+	require.False(t, ok)
+	require.NotPanics(t, p.Close)
 }
 
 func (ls *testLoadSaver) New(name string) error {
