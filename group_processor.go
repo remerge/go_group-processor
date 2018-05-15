@@ -75,7 +75,7 @@ func (gp *GroupProcessor) logMetrics() {
 		"process_m1":  int64(gp.processed.Rate1()),
 		"retries":     gp.retries.Count(),
 		"skipped":     gp.skipped.Count(),
-	}).Infof("messages")
+	}).Debug("messages")
 }
 
 func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
