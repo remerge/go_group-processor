@@ -1,5 +1,5 @@
-hash: 97e02bc271faedf6dfc7e256e63c31d089efa91bed27bc913c168c1f5e882717
-updated: 2018-02-14T08:26:53.81684679Z
+hash: 0976c863b11a203ed23aac94b9e929d3af95555c0393243956b2d94d6e030908
+updated: 2018-05-14T12:48:12.742781266+02:00
 imports:
 - name: github.com/aerospike/aerospike-client-go
   version: 063f8b96bafba69f05de81d959123cb8e5a41e4e
@@ -52,6 +52,11 @@ imports:
 - name: github.com/Shopify/sarama
   version: 293f3e8cc48504e0ae8bc229803a8f478ae1c2cd
   repo: https://github.com/remerge/sarama
+- name: github.com/stretchr/testify
+  version: 12b6f73e6084dad08a7c6e575284b177ecafbc71
+  subpackages:
+  - assert
+  - require
 - name: github.com/yuin/gopher-lua
   version: 7d7bc8747e3f614c5c587729a341fe7d8903cdb8
   subpackages:
@@ -62,4 +67,8 @@ imports:
   version: f5dfe339be1d06f81b22525fe34671ee7d2c8904
   subpackages:
   - context
-testImports: []
+testImports:
+- name: github.com/pmezard/go-difflib
+  version: 792786c7400a136282c1664665ae0a8db921c6c2
+  subpackages:
+  - difflib

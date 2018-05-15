@@ -5,6 +5,7 @@ import (
 	"hash/fnv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Shopify/sarama"
@@ -64,8 +65,10 @@ type SaramaProcessor struct {
 	client   sarama.Client
 	consumer sarama.ConsumerGroup
 
-	messages    chan interface{}
-	messagePool *wp.Pool
+	messages                 chan interface{}
+	firstRebalanceDoneClosed int32
+	firstRebalanceDoneCh     chan interface{}
+	messagePool              *wp.Pool
 
 	loadedOffsets   map[int32]int64
 	inFlightOffsets map[int32]map[int64]*sarama.ConsumerMessage
@@ -169,8 +172,12 @@ func (p *SaramaProcessor) init() (err error) {
 	}
 
 	p.messages = make(chan interface{})
+	p.firstRebalanceDoneCh = make(chan interface{})
 	p.messagePool = wp.NewPool(p.ID+".messages", 1, p.messageWorker)
 	p.messagePool.Run()
+	if p.Config.Group.Return.Notifications {
+		<-p.firstRebalanceDoneCh
+	}
 
 	p.loadedOffsets = make(map[int32]int64)
 	p.inFlightOffsets = make(map[int32]map[int64]*sarama.ConsumerMessage)
@@ -192,6 +199,9 @@ func (p *SaramaProcessor) messageWorker(w *wp.Worker) {
 				return
 			}
 		case n, ok := <-p.consumer.Notifications():
+			if atomic.CompareAndSwapInt32(&p.firstRebalanceDoneClosed, 0, 1) {
+				close(p.firstRebalanceDoneCh)
+			}
 			if !ok {
 				break
 			}
@@ -269,6 +279,10 @@ func (p *SaramaProcessor) OnTrack() {
 func (p *SaramaProcessor) Close() {
 	p.log.Info("save consumer offsets")
 	p.OnTrack()
+
+	if p.Config.Group.Return.Notifications && atomic.CompareAndSwapInt32(&p.firstRebalanceDoneClosed, 0, 1) {
+		close(p.firstRebalanceDoneCh)
+	}
 
 	p.log.Info("consumer group shutdown")
 	// nolint: errcheck
