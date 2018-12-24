@@ -1,6 +1,7 @@
 package groupprocessor
 
 import (
+	"errors"
 	"time"
 
 	metrics "github.com/rcrowley/go-metrics"
@@ -48,6 +49,13 @@ func New(config *Config) (gp *GroupProcessor, err error) {
 }
 
 func (gp *GroupProcessor) init() (err error) {
+	if gp.Processor == nil {
+		return errors.New("Processor does not exist")
+	}
+	if gp.LoadSaver == nil {
+		return errors.New("LoadSaver does not exist")
+	}
+
 	gp.log = cue.NewLogger(gp.Name)
 
 	gp.loadPool = wp.NewPool(gp.Name+".load", gp.NumLoadWorker, gp.loadWorker)
