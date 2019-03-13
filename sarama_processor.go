@@ -232,6 +232,16 @@ func (p *SaramaProcessor) OnLoad(processable Processable) {
 }
 
 func (p *SaramaProcessor) OnProcessed(processable Processable) {
+	p.processableFinished(processable)
+}
+
+func (p *SaramaProcessor) OnSkip(processable Processable, err error) {
+	p.processableFinished(processable)
+}
+
+// processableFinished is called either once the processable is successfully
+// processed (OnProcessed) or when all of the retries were exhausted (OnSkip).
+func (p *SaramaProcessor) processableFinished(processable Processable) {
 	msg := processable.Value().(*sarama.ConsumerMessage)
 
 	p.Lock()
