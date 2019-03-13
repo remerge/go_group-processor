@@ -16,16 +16,14 @@ type testProcessable struct {
 
 type testLoadSaver struct {
 	SaramaLoadSaver
-	channel chan string
+	saveFn func(Processable) error
 }
 
-func (ls *testLoadSaver) New(name string) error {
-	if err := ls.SaramaLoadSaver.New(name); err != nil {
+func (ls *testLoadSaver) New(saveFn func(Processable) error) error {
+	if err := ls.SaramaLoadSaver.New("testLoadSaver"); err != nil {
 		return err
 	}
-
-	ls.channel = make(chan string)
-
+	ls.saveFn = saveFn
 	return nil
 }
 
@@ -38,13 +36,7 @@ func (ls *testLoadSaver) Load(value interface{}) Processable {
 }
 
 func (ls *testLoadSaver) Save(p Processable) error {
-	ls.channel <- string(p.Value().(*sarama.ConsumerMessage).Value)
-	return ls.SaramaLoadSaver.Save(p)
-}
-
-func (ls *testLoadSaver) Done(p Processable) bool {
-	ls.Log.Infof("processed msg=%v", p.Value())
-	return ls.SaramaLoadSaver.Done(p)
+	return ls.saveFn(p)
 }
 
 func (ls *testLoadSaver) Fail(p Processable, err error) bool {
@@ -54,55 +46,72 @@ func (ls *testLoadSaver) Fail(p Processable, err error) bool {
 }
 
 func assertEqual(t *testing.T, a interface{}, b interface{}, message string, args ...interface{}) {
+	t.Helper()
 	if a != b {
-		t.Fatalf(message, args)
+		t.Fatalf(message, args...)
 	}
 }
 
-func TestGroupProcessor(t *testing.T) {
-	tls := &testLoadSaver{}
-
-	if err := tls.New("testLoadSaver"); err != nil {
-		t.Errorf("Unexpected error in tls.New: %v", err)
-		return
-	}
+func createTestSaramaGroupProcessor(t *testing.T, loadSaver LoadSaver) *GroupProcessor {
+	t.Helper()
 
 	p, err := NewSaramaProcessor(&SaramaProcessorConfig{
 		Name:    "processor",
 		Brokers: "localhost:9092",
 		Topic:   "test",
 	})
-
 	if err != nil {
-		t.Errorf("Unexpected error in p.New: %v", err)
-		return
+		t.Fatalf("couldn't create sarama processor: %v", err)
 	}
 
 	gp, err := New(&Config{
 		Name:          "gp",
 		Processor:     p,
-		NumLoadWorker: 4,
-		NumSaveWorker: 4,
+		MaxRetries:    1,
+		NumLoadWorker: 1,
+		NumSaveWorker: 1,
 		TrackInterval: 1 * time.Second,
-		LoadSaver:     tls,
+		LoadSaver:     loadSaver,
 	})
-
 	if err != nil {
-		t.Errorf("Unexpected error in gp.New: %v", err)
-		return
+		t.Fatalf("couldn't create group processor: %v", err)
 	}
 
-	gp.Run()
+	return gp
+}
+
+func produceTestMessage(t *testing.T, msg string) {
+	t.Helper()
 
 	producer, err := sarama.NewSyncProducer([]string{"localhost:9092"}, nil)
-	assertEqual(t, err, nil, "Unexpected error in NewSyncProducer: %v", err)
+	if err != nil {
+		t.Fatalf("couldn't create producer: %v", err)
+	}
 
 	_, _, err = producer.SendMessage(&sarama.ProducerMessage{
 		Topic: "test",
-		Value: sarama.StringEncoder("test"),
+		Value: sarama.StringEncoder(msg),
 	})
+	if err != nil {
+		t.Fatalf("couldn't produce test message: %v", err)
+	}
+}
 
-	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
+func TestGroupProcessor(t *testing.T) {
+	tls := &testLoadSaver{}
+	msgs := make(chan string)
+	err := tls.New(func(p Processable) error {
+		msgs <- string(p.Value().(*sarama.ConsumerMessage).Value)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("couldn't create test load saver: %v", err)
+	}
+
+	gp := createTestSaramaGroupProcessor(t, tls)
+	gp.Run()
+
+	produceTestMessage(t, "test")
 
 	timeout := time.After(1 * time.Second)
 	var msg string
@@ -110,9 +119,7 @@ func TestGroupProcessor(t *testing.T) {
 L:
 	for {
 		select {
-		// drain channel
-		case msg = <-tls.channel:
-			fmt.Printf("msg=%#v\n", msg)
+		case msg = <-msgs:
 		case <-timeout:
 			gp.Close()
 			break L
@@ -122,86 +129,34 @@ L:
 	assertEqual(t, msg, "test", "expected message to equal \"test\", got %#v", msg)
 }
 
-type testLoadErrorSaver struct {
-	testLoadSaver
-	channel chan *testProcessable
-}
-
-func (ls *testLoadErrorSaver) New(name string) error {
-	if err := ls.SaramaLoadSaver.New(name); err != nil {
-		return err
-	}
-
-	ls.channel = make(chan *testProcessable)
-
-	return nil
-}
-
-func (ls *testLoadErrorSaver) Save(p Processable) error {
-	tp := p.(*testProcessable)
-	if tp.retries > 0 {
-		ls.channel <- tp
-	} else {
-		return errors.New("test error")
-	}
-	return nil
-}
-
 func TestGroupProcessorWithErrorRetry(t *testing.T) {
-	tls := &testLoadErrorSaver{}
-
-	if err := tls.New("testLoadErrorSaver"); err != nil {
-		t.Errorf("Unexpected error in tls.New: %v", err)
-		return
-	}
-
-	p, err := NewSaramaProcessor(&SaramaProcessorConfig{
-		Name:    "processor",
-		Brokers: "localhost:9092",
-		Topic:   "test",
+	tls := &testLoadSaver{}
+	processables := make(chan *testProcessable)
+	err := tls.New(func(p Processable) error {
+		tp := p.(*testProcessable)
+		if tp.retries > 0 {
+			processables <- tp
+		} else {
+			return errors.New("test error")
+		}
+		return nil
 	})
-
 	if err != nil {
-		t.Errorf("Unexpected error in p.New: %v", err)
-		return
+		t.Fatalf("couldn't create test load saver: %v", err)
 	}
 
-	gp, err := New(&Config{
-		Name:          "gp",
-		Processor:     p,
-		MaxRetries:    1,
-		NumLoadWorker: 4,
-		NumSaveWorker: 4,
-		TrackInterval: 1 * time.Second,
-		LoadSaver:     tls,
-	})
-
-	if err != nil {
-		t.Errorf("Unexpected error in gp.New: %v", err)
-		return
-	}
-
+	gp := createTestSaramaGroupProcessor(t, tls)
 	gp.Run()
 
-	producer, err := sarama.NewSyncProducer([]string{"localhost:9092"}, nil)
-	assertEqual(t, err, nil, "Unexpected error in NewSyncProducer: %v", err)
+	produceTestMessage(t, "test")
 
-	_, _, err = producer.SendMessage(&sarama.ProducerMessage{
-		Topic: "test",
-		Value: sarama.StringEncoder("test"),
-	})
-
-	assertEqual(t, err, nil, "Unexpected error in SendMessage: %v", err)
-
-	timeout := time.After(1 * time.Second)
+	timeout := time.After(2 * time.Second)
 	var tp *testProcessable
 
 L:
 	for {
 		select {
-		// drain channel
-		case tp = <-tls.channel:
-			fmt.Printf("msg=%#v\n", string(tp.Value().(*sarama.ConsumerMessage).Value))
+		case tp = <-processables:
 		case <-timeout:
 			gp.Close()
 			break L
@@ -209,4 +164,56 @@ L:
 	}
 
 	assertEqual(t, tp.retries, 1, "expected message to be retried once, got %#v", tp.retries)
+}
+
+func TestGroupProcessorCommitOffsetsAfterSkip(t *testing.T) {
+	tls := &testLoadSaver{}
+	msgs := make(chan string)
+	err := tls.New(func(p Processable) error {
+		msgs <- string(p.Value().(*sarama.ConsumerMessage).Value)
+		return fmt.Errorf("something bad happened")
+	})
+	if err != nil {
+		t.Fatalf("couldn't create test load saver: %v", err)
+	}
+
+	gp := createTestSaramaGroupProcessor(t, tls)
+	gp.Run()
+
+	produceTestMessage(t, "test1")
+	produceTestMessage(t, "test2")
+	produceTestMessage(t, "test3")
+
+	timeout := time.After(6 * time.Second)
+	var msg string
+
+L:
+	for {
+		select {
+		case msg = <-msgs:
+		case <-timeout:
+			gp.Close()
+			break L
+		}
+	}
+
+	assertEqual(t, msg, "test3", "expected message to equal \"test3\", got %#v", msg)
+
+	gp = createTestSaramaGroupProcessor(t, tls)
+	gp.Run()
+
+	timeout = time.After(1 * time.Second)
+	msg = ""
+
+L2:
+	for {
+		select {
+		case msg = <-msgs:
+		case <-timeout:
+			gp.Close()
+			break L2
+		}
+	}
+
+	assertEqual(t, msg, "", "expected message to equal \"\", got %#v", msg)
 }
