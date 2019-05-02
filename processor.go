@@ -1,11 +1,28 @@
 package groupprocessor
 
 import (
+	"math/rand"
 	"time"
 
 	"github.com/cenkalti/backoff"
 	"github.com/remerge/cue"
 )
+
+type RandomBackoff struct {
+	Max int64
+}
+
+func NewRandomBackoff(max time.Duration) backoff.BackOff {
+	return &RandomBackoff{
+		Max: int64(max),
+	}
+}
+
+func (b *RandomBackoff) NextBackOff() time.Duration {
+	return time.Millisecond * time.Duration(rand.Int63n(b.Max))
+}
+
+func (*RandomBackoff) Reset() {}
 
 type Processor interface {
 	Messages() chan interface{}
@@ -20,12 +37,12 @@ type Processor interface {
 
 type DefaultProcessor struct {
 	ID  string
-	ebo *backoff.ExponentialBackOff
+	ebo backoff.BackOff
 	log cue.Logger
 }
 
 func (p *DefaultProcessor) New() (err error) {
-	p.ebo = backoff.NewExponentialBackOff()
+	p.ebo = NewRandomBackoff(time.Millisecond * 500)
 	p.log = cue.NewLogger(p.ID)
 	return nil
 }
