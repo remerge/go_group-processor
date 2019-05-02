@@ -1,19 +1,25 @@
-sudo: true
+dist: xenial
 language: go
-go:
-- 1.9.2
-cache:
-  directories:
-  - vendor
+
 services:
 - docker
+
+go:
+- "1.12"
+
+cache:
+  directories:
+  - $GOPATH/pkg/mod
+  - $GOPATH/bin
+  - $HOME/.cache/go-build
+
 before_install:
 - docker pull spotify/kafka
 - docker run -d -p 2181:2181 -p 9092:9092 --env ADVERTISED_HOST=localhost --env ADVERTISED_PORT=9092 spotify/kafka
-install:
-- make dep
+
 script:
-- make test clean
+- make lint test-nocache
+
 notifications:
   email: false
   slack:

@@ -1,6 +1,6 @@
-PROJECT := go-group_processor
-PACKAGE := github.com/remerge/$(PROJECT)
+#PROJECT := go-group_processor
+#PACKAGE := github.com/remerge/$(PROJECT)
+#
+#GOMETALINTER_OPTS=--errors -D gotype
 
-GOMETALINTER_OPTS=--errors -D gotype
-
-include Makefile.common
+include mkf/Makefile.common
