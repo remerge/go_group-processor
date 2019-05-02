@@ -28,11 +28,11 @@ func (ls *DefaultLoadSaver) Load(value interface{}) Processable {
 	}
 }
 
-func (ls *DefaultLoadSaver) Save(p Processable) error {
+func (ls *DefaultLoadSaver) Save(_ Processable) error {
 	return nil
 }
 
-func (ls *DefaultLoadSaver) Done(p Processable) bool {
+func (ls *DefaultLoadSaver) Done(_ Processable) bool {
 	return true
 }
 
