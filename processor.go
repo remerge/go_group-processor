@@ -19,7 +19,7 @@ func NewRandomBackoff(max time.Duration) backoff.BackOff {
 }
 
 func (b *RandomBackoff) NextBackOff() time.Duration {
-	return time.Millisecond * time.Duration(rand.Int63n(b.Max))
+	return time.Duration(rand.Int63n(b.Max))
 }
 
 func (*RandomBackoff) Reset() {}
