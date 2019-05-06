@@ -169,6 +169,7 @@ func (gp *GroupProcessor) saveMsg(processable Processable) {
 				"value":   processable.Value(),
 				"backoff": bo,
 			}).Warn("retrying failed message")
+			gp.Processor.OnRetry(processable)
 			time.Sleep(bo.NextBackOff())
 
 			gp.retries.Inc(1)
