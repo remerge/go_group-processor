@@ -17,7 +17,7 @@ require (
 	github.com/remerge/cue v0.0.0-20180404154012-5ce627d813ef
 	github.com/remerge/go-worker_pool v0.0.0-20190319014350-71378d2820a6
 	github.com/remerge/go-xorshift v0.0.0-20190107192416-9e21cadd0c37
-	github.com/remerge/kcg v0.0.0-20190507145637-36bc1bd7444a // indirect
+	github.com/remerge/kcg v0.0.0-20190508133442-a506a01effb9
 	github.com/yuin/gopher-lua v0.0.0-20190206043414-8bfc7677f583 // indirect
 	golang.org/x/sync v0.0.0-20190423024810-112230192c58 // indirect
 )
