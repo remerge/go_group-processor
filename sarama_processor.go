@@ -2,6 +2,7 @@ package groupprocessor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	"github.com/Shopify/sarama"
 	rand "github.com/remerge/go-xorshift"
 )
+
+var ErrDiscardMessage = errors.New("discard message")
 
 type SaramaProcessable struct {
 	value *sarama.ConsumerMessage
@@ -142,11 +145,15 @@ func (p *SaramaProcessor) OnProcessed(processable Processable) {
 }
 
 func (p *SaramaProcessor) OnSkip(processable Processable, err error) {
-	// TODO (spin): ??? assert error
+	if err == ErrDiscardMessage {
+		msg := processable.Value().(*sarama.ConsumerMessage)
+		_ = p.handler.manager.ConfirmMessage(msg)
+		p.DefaultProcessor.OnSkip(processable, err)
+		return
+	}
 
 	// detach manager from current session
 	_ = p.handler.manager.ReleaseSession(nil)
-	p.DefaultProcessor.OnSkip(processable, err)
 }
 
 func (p *SaramaProcessor) OnTrack() {}
@@ -192,7 +199,7 @@ func (h *ProcessorConsumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSe
 			// manager may be closed - just return
 			return nil
 		}
-		h.messageChan <- NewSaramaProcessable(msg)
+		h.messageChan <- msg
 	}
 	return nil
 }

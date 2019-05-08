@@ -2,7 +2,6 @@ package groupprocessor
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -120,13 +119,13 @@ L:
 	for {
 		select {
 		case msg = <-msgs:
+			assertEqual(t, msg, "test", "expected message to equal \"test\", got %#v", msg)
 		case <-timeout:
 			gp.Close()
 			break L
 		}
 	}
 
-	assertEqual(t, msg, "test", "expected message to equal \"test\", got %#v", msg)
 }
 
 func TestGroupProcessorWithErrorRetry(t *testing.T) {
@@ -151,19 +150,19 @@ func TestGroupProcessorWithErrorRetry(t *testing.T) {
 	produceTestMessage(t, "test")
 
 	timeout := time.After(2 * time.Second)
-	var tp *testProcessable
+	// var tp *testProcessable
 
 L:
 	for {
 		select {
-		case tp = <-processables:
+		case tp := <-processables:
+			assertEqual(t, tp.retries, 1, "expected message to be retried once, got %#v", tp.retries)
 		case <-timeout:
 			gp.Close()
 			break L
 		}
 	}
 
-	assertEqual(t, tp.retries, 1, "expected message to be retried once, got %#v", tp.retries)
 }
 
 func TestGroupProcessorCommitOffsetsAfterSkip(t *testing.T) {
@@ -171,7 +170,7 @@ func TestGroupProcessorCommitOffsetsAfterSkip(t *testing.T) {
 	msgs := make(chan string)
 	err := tls.New(func(p Processable) error {
 		msgs <- string(p.Value().(*sarama.ConsumerMessage).Value)
-		return fmt.Errorf("something bad happened")
+		return ErrDiscardMessage
 	})
 	if err != nil {
 		t.Fatalf("couldn't create test load saver: %v", err)
