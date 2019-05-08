@@ -9,7 +9,6 @@ import (
 
 	"github.com/Shopify/sarama"
 	rand "github.com/remerge/go-xorshift"
-	"github.com/remerge/kcg"
 )
 
 type SaramaProcessable struct {
@@ -70,7 +69,7 @@ type SaramaProcessor struct {
 	DefaultProcessor
 
 	handler  *ProcessorConsumerGroupHandler
-	consumer *kcg.Consumer
+	consumer *Consumer
 
 	messages chan interface{}
 }
@@ -98,13 +97,13 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 	p.Config.ClientID = p.ID
 	p.Config.Version = sarama.V0_10_2_0
 
-	p.consumer, err = kcg.Consume(
+	p.consumer, err = Consume(
 		context.Background(),
 		p.Config,
 		strings.Split(p.Brokers, ","),
-		kcg.ConsumerConfig{
+		ConsumerConfig{
 			GroupID: fmt.Sprintf("%s.%s.%d", p.Name, p.Topic, p.GroupGen),
-			Topics: []string{p.Topic},
+			Topics:  []string{p.Topic},
 			Handler: p.handler,
 			OnError: func(e error) error {
 				switch err1 := e.(type) {
@@ -132,7 +131,7 @@ func (p *SaramaProcessor) Messages() chan interface{} {
 	return p.messages
 }
 
-func (p *SaramaProcessor) OnLoad(processable Processable) {
+func (p *SaramaProcessor) OnLoad(_ Processable) {
 	// nothing
 }
 
@@ -169,13 +168,13 @@ func (p *SaramaProcessor) Wait() {
 
 type ProcessorConsumerGroupHandler struct {
 	messageChan chan interface{}
-	manager     *kcg.SequenceSessionManager
+	manager     *SequenceSessionManager
 }
 
 func NewProcessorConsumerGroupHandler(ch chan interface{}) *ProcessorConsumerGroupHandler {
 	return &ProcessorConsumerGroupHandler{
 		messageChan: ch,
-		manager:     kcg.NewSequenceSessionManager(),
+		manager:     NewSequenceSessionManager(),
 	}
 }
 
