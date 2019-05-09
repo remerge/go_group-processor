@@ -4,7 +4,8 @@ import (
 	"errors"
 	"time"
 
-	metrics "github.com/rcrowley/go-metrics"
+	"github.com/cenkalti/backoff"
+	"github.com/rcrowley/go-metrics"
 	"github.com/remerge/cue"
 	wp "github.com/remerge/go-worker_pool"
 )
@@ -160,12 +161,22 @@ func (gp *GroupProcessor) saveMsg(processable Processable) {
 		return
 	}
 
-	for i := 0; i < gp.MaxRetries; i++ {
-		gp.Processor.OnRetry(processable)
-		gp.retries.Inc(1)
+	if gp.MaxRetries > 0 {
+		bo := backoff.NewExponentialBackOff()
+		for i := 0; i < gp.MaxRetries; i++ {
+			gp.log.WithFields(cue.Fields{
+				"key":     processable.Key(),
+				"value":   processable.Value(),
+				"backoff": bo,
+			}).Warn("retrying failed message")
+			gp.Processor.OnRetry(processable)
+			time.Sleep(bo.NextBackOff())
 
-		if err = gp.trySaveMsg(processable); err == nil {
-			return
+			gp.retries.Inc(1)
+
+			if err = gp.trySaveMsg(processable); err == nil {
+				return
+			}
 		}
 	}
 
