@@ -112,19 +112,19 @@ func TestGroupProcessor(t *testing.T) {
 
 	produceTestMessage(t, "test")
 
-	timeout := time.After(1 * time.Second)
+	timeout := time.After(5 * time.Second)
 	var msg string
 
 L:
 	for {
 		select {
 		case msg = <-msgs:
-			assertEqual(t, msg, "test", "expected message to equal \"test\", got %#v", msg)
 		case <-timeout:
 			gp.Close()
 			break L
 		}
 	}
+	assertEqual(t, msg, "test", "expected message to equal \"test\", got %#v", msg)
 
 }
 
@@ -150,18 +150,18 @@ func TestGroupProcessorWithErrorRetry(t *testing.T) {
 	produceTestMessage(t, "test")
 
 	timeout := time.After(2 * time.Second)
-	// var tp *testProcessable
+	var tp *testProcessable
 
 L:
 	for {
 		select {
-		case tp := <-processables:
-			assertEqual(t, tp.retries, 1, "expected message to be retried once, got %#v", tp.retries)
+		case tp = <-processables:
 		case <-timeout:
 			gp.Close()
 			break L
 		}
 	}
+	assertEqual(t, tp.retries, 1, "expected message to be retried once, got %#v", tp.retries)
 
 }
 
