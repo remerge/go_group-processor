@@ -79,7 +79,7 @@ func (m *SequenceSessionManager) DeclareMessage(sess sarama.ConsumerGroupSession
 	if m.sess == nil {
 		return nil, ErrSessionIsNotAttached
 	}
-	if m.sess.GenerationID() != m.sess.GenerationID() {
+	if m.sess.GenerationID() != sess.GenerationID() {
 		return nil, ErrBadSession
 	}
 

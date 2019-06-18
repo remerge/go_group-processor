@@ -15,8 +15,8 @@ import (
 type GroupProcessor struct {
 	*Config
 
-	loadPool  *wp.Pool
-	savePool  *wp.Pool
+	loadPool *wp.Pool
+	savePool *wp.Pool
 	// trackPool *wp.Pool
 
 	loaded    metrics.Timer

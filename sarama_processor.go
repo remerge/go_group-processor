@@ -60,6 +60,7 @@ type SaramaProcessorConfig struct {
 	Brokers  string
 	Topic    string
 	GroupGen int
+	OnError  func(error) error
 
 	Config *sarama.Config
 }
@@ -144,14 +145,16 @@ func (p *SaramaProcessor) OnProcessed(processable Processable) {
 
 func (p *SaramaProcessor) OnSkip(processable Processable, err error) {
 	msg := processable.Value().(*sarama.ConsumerMessage)
-	if err == ErrDiscardMessage {
-		_ = p.handler.manager.ConfirmMessage(msg)
-		p.DefaultProcessor.OnSkip(processable, err)
-		return
+	if p.OnError != nil {
+		if err1 := p.OnError(err); err1 != nil {
+			// fail whole session on unrecoverable error
+			_ = p.handler.manager.ReleaseSession(nil, msg.Headers)
+			return
+		}
 	}
-
-	// detach manager from current session
-	_ = p.handler.manager.ReleaseSession(nil, msg.Headers)
+	_ = p.handler.manager.ConfirmMessage(msg)
+	p.DefaultProcessor.OnSkip(processable, err)
+	return
 }
 
 func (p *SaramaProcessor) OnTrack() {}
@@ -172,12 +175,14 @@ func (p *SaramaProcessor) Wait() {
 }
 
 type ProcessorConsumerGroupHandler struct {
-	manager       *SequenceSessionManager
+	messageChan chan interface{}
+	manager     *SequenceSessionManager
 }
 
 func NewProcessorConsumerGroupHandler(ch chan interface{}) *ProcessorConsumerGroupHandler {
 	return &ProcessorConsumerGroupHandler{
-		manager: NewSequenceSessionManager(),
+		messageChan: ch,
+		manager:     NewSequenceSessionManager(),
 	}
 }
 
@@ -191,13 +196,12 @@ func (h *ProcessorConsumerGroupHandler) Cleanup(sess sarama.ConsumerGroupSession
 
 func (h *ProcessorConsumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for msg := range claim.Messages() {
-		// attach session information
 		msg1, err := h.manager.DeclareMessage(sess, msg)
 		if err != nil {
 			// manager may be closed - just return
 			return nil
 		}
-		// h.messageChan <- msg
+		h.messageChan <- msg1
 	}
 	return nil
 }
