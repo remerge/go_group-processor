@@ -170,7 +170,7 @@ func TestGroupProcessorCommitOffsetsAfterSkip(t *testing.T) {
 	msgs := make(chan string)
 	err := tls.New(func(p Processable) error {
 		msgs <- string(p.Value().(*sarama.ConsumerMessage).Value)
-		return ErrDiscardMessage
+		return errors.New("BOOM")
 	})
 	if err != nil {
 		t.Fatalf("couldn't create test load saver: %v", err)

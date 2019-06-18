@@ -2,7 +2,6 @@ package groupprocessor
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"hash/fnv"
 	"strings"
@@ -11,8 +10,6 @@ import (
 	"github.com/Shopify/sarama"
 	rand "github.com/remerge/go-xorshift"
 )
-
-var ErrDiscardMessage = errors.New("discard message")
 
 type SaramaProcessable struct {
 	value *sarama.ConsumerMessage
@@ -56,11 +53,11 @@ func (ls *SaramaLoadSaver) Load(value interface{}) Processable {
 }
 
 type SaramaProcessorConfig struct {
-	Name     string
-	Brokers  string
-	Topic    string
-	GroupGen int
-	OnError  func(error) error
+	Name        string
+	Brokers     string
+	Topic       string
+	GroupGen    int
+	AssertError func(error) bool // Optional error assertion. If it's nil or returns false Processor will silently confirm message. Elsewhere fail whole session.
 
 	Config *sarama.Config
 }
@@ -145,12 +142,9 @@ func (p *SaramaProcessor) OnProcessed(processable Processable) {
 
 func (p *SaramaProcessor) OnSkip(processable Processable, err error) {
 	msg := processable.Value().(*sarama.ConsumerMessage)
-	if p.OnError != nil {
-		if err1 := p.OnError(err); err1 != nil {
-			// fail whole session on unrecoverable error
-			_ = p.handler.manager.ReleaseSession(nil, msg.Headers)
-			return
-		}
+	if p.AssertError != nil && p.AssertError(err) {
+		_ = p.handler.manager.ReleaseSession(nil, msg.Headers)
+		return
 	}
 	_ = p.handler.manager.ConfirmMessage(msg)
 	p.DefaultProcessor.OnSkip(processable, err)
@@ -161,9 +155,6 @@ func (p *SaramaProcessor) OnTrack() {}
 
 // Close all pools, save offsets and close Kafka-connections
 func (p *SaramaProcessor) Close() {
-	p.log.Info("save consumer offsets")
-	p.OnTrack()
-
 	p.log.Info("consumer group shutdown")
 	_ = p.log.Error(p.consumer.Close(), "consumer group shutdown failed")
 
