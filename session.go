@@ -3,6 +3,7 @@ package groupprocessor
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"sync"
 
 	"github.com/Shopify/sarama"
@@ -16,7 +17,10 @@ var (
 )
 
 type SequenceSessionManager struct {
-	sess     sarama.ConsumerGroupSession
+	sess       sarama.ConsumerGroupSession
+	genS       string
+	sessHeader *sarama.RecordHeader
+
 	declared map[partitionKey][]*managedMessage
 	mu       sync.Mutex
 }
@@ -34,39 +38,49 @@ func (m *SequenceSessionManager) AttachSession(sess sarama.ConsumerGroupSession)
 		return ErrSessionIsAlreadyAttached
 	}
 	m.sess = sess
+	m.genS = strconv.Itoa(int(sess.GenerationID()))
+	m.sessHeader = &sarama.RecordHeader{
+		Key:   []byte("__generation"),
+		Value: []byte(m.genS),
+	}
+
 	m.declared = map[partitionKey][]*managedMessage{}
 	return nil
 }
 
 // ReleaseSession detaches given session from manager. Use in `Cleanup()` method of Sarama CG handler. To force detach use nil as argument.
-func (m *SequenceSessionManager) ReleaseSession(sess sarama.ConsumerGroupSession) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if sess != nil {
-		if m.sess == nil {
-			return ErrSessionIsNotAttached
-		}
-		if m.sess.MemberID() != sess.MemberID() || m.sess.GenerationID() != m.sess.GenerationID() {
-			return ErrBadSession
-		}
-	}
-
-	m.sess = nil
-	m.declared = nil
-	return nil
-}
-
-// DeclareMessage declares message. This defines commit sequence and should be called only once for each message in correct order. Use in `ConsumeClaim()` method of Sarama CG handler.
-func (m *SequenceSessionManager) DeclareMessage(sess sarama.ConsumerGroupSession, msg *sarama.ConsumerMessage) error {
+func (m *SequenceSessionManager) ReleaseSession(sess sarama.ConsumerGroupSession, headers []*sarama.RecordHeader) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if m.sess == nil {
 		return ErrSessionIsNotAttached
 	}
-	if m.sess.MemberID() != sess.MemberID() || m.sess.GenerationID() != m.sess.GenerationID() {
+
+	if sess != nil && m.sess.GenerationID() != m.sess.GenerationID() {
 		return ErrBadSession
+	}
+	if len(headers) > 0 && !m.checkHeader(headers) {
+		return ErrBadSession
+	}
+
+	m.sess = nil
+	m.genS = ""
+	m.sessHeader = nil
+	m.declared = nil
+	return nil
+}
+
+// DeclareMessage declares message and returns message with session generation encoded in record header. This method defines commit sequence and should be called only once for each message in correct order. Use in `ConsumeClaim()` method of Sarama CG handler. This method encodes session generation in record headers.
+func (m *SequenceSessionManager) DeclareMessage(sess sarama.ConsumerGroupSession, msg *sarama.ConsumerMessage) (*sarama.ConsumerMessage, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.sess == nil {
+		return nil, ErrSessionIsNotAttached
+	}
+	if m.sess.GenerationID() != m.sess.GenerationID() {
+		return nil, ErrBadSession
 	}
 
 	key := partitionKey{
@@ -75,13 +89,14 @@ func (m *SequenceSessionManager) DeclareMessage(sess sarama.ConsumerGroupSession
 	}
 
 	if len(m.declared[key]) > 0 && m.declared[key][len(m.declared[key])-1].message.Offset > msg.Offset {
-		return fmt.Errorf("message offset is less than last: declared=%d offset=%d", m.declared[key][len(m.declared[key])-1].message.Offset, msg.Offset)
+		return nil, fmt.Errorf("message offset is less than last: declared=%d offset=%d", m.declared[key][len(m.declared[key])-1].message.Offset, msg.Offset)
 	}
 
 	m.declared[key] = append(m.declared[key], &managedMessage{
 		message: msg,
 	})
-	return nil
+	msg.Headers = append(msg.Headers, m.sessHeader)
+	return msg, nil
 }
 
 // ConfirmMessage confirms that given message is processed and offset can be committed to consumer group. Message must be declared.
@@ -91,6 +106,9 @@ func (m *SequenceSessionManager) ConfirmMessage(msg *sarama.ConsumerMessage) err
 
 	if m.sess == nil {
 		return ErrSessionIsNotAttached
+	}
+	if !m.checkHeader(msg.Headers) {
+		return ErrBadSession
 	}
 
 	key := partitionKey{
@@ -126,6 +144,15 @@ func (m *SequenceSessionManager) ConfirmMessage(msg *sarama.ConsumerMessage) err
 		m.declared[key] = partition[confirmed:]
 	}
 	return nil
+}
+
+func (m *SequenceSessionManager) checkHeader(headers []*sarama.RecordHeader) (ok bool) {
+	for _, header := range headers {
+		if string(header.Key) == "__generation" && string(header.Value) == m.genS {
+			return true
+		}
+	}
+	return false
 }
 
 type partitionKey struct {

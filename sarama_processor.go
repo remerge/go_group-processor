@@ -134,9 +134,7 @@ func (p *SaramaProcessor) Messages() chan interface{} {
 	return p.messages
 }
 
-func (p *SaramaProcessor) OnLoad(_ Processable) {
-	// nothing
-}
+func (p *SaramaProcessor) OnLoad(_ Processable) {}
 
 func (p *SaramaProcessor) OnProcessed(processable Processable) {
 	msg := processable.Value().(*sarama.ConsumerMessage)
@@ -174,14 +172,13 @@ func (p *SaramaProcessor) Wait() {
 }
 
 type ProcessorConsumerGroupHandler struct {
-	messageChan chan interface{}
-	manager     *SequenceSessionManager
+	manager       *SequenceSessionManager
+	sessionHeader *sarama.RecordHeader
 }
 
 func NewProcessorConsumerGroupHandler(ch chan interface{}) *ProcessorConsumerGroupHandler {
 	return &ProcessorConsumerGroupHandler{
-		messageChan: ch,
-		manager:     NewSequenceSessionManager(),
+		manager: NewSequenceSessionManager(),
 	}
 }
 
@@ -195,11 +192,15 @@ func (h *ProcessorConsumerGroupHandler) Cleanup(sess sarama.ConsumerGroupSession
 
 func (h *ProcessorConsumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for msg := range claim.Messages() {
+		// attach session information
+		msg.Headers = append(msg.Headers, &sarama.RecordHeader{
+			Key: []byte("session"),
+		})
 		if err := h.manager.DeclareMessage(sess, msg); err != nil {
 			// manager may be closed - just return
 			return nil
 		}
-		h.messageChan <- msg
+		// h.messageChan <- msg
 	}
 	return nil
 }
