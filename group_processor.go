@@ -24,8 +24,6 @@ type GroupProcessor struct {
 	retries   metrics.Counter
 	skipped   metrics.Counter
 
-	handler *ProcessorConsumerGroupHandler
-
 	log cue.Logger
 }
 
