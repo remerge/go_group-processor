@@ -127,7 +127,6 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 	return p, nil
 }
 
-// Messages returns
 func (p *SaramaProcessor) Messages() chan interface{} {
 	return p.messages
 }

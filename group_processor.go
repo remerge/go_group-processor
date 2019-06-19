@@ -17,7 +17,6 @@ type GroupProcessor struct {
 
 	loadPool *wp.Pool
 	savePool *wp.Pool
-	// trackPool *wp.Pool
 
 	loaded    metrics.Timer
 	processed metrics.Timer
@@ -62,10 +61,6 @@ func (gp *GroupProcessor) init() (err error) {
 	gp.loadPool = wp.NewPool(gp.Name+".load", gp.NumLoadWorker, gp.loadWorker)
 	gp.savePool = wp.NewPool(gp.Name+".save", gp.NumSaveWorker, gp.saveWorker)
 
-	// if gp.TrackInterval > 0 {
-	// 	gp.trackPool = wp.NewPool(gp.Name+".track", 1, gp.trackWorker)
-	// }
-
 	gp.loaded = metrics.GetOrRegisterTimer(gp.Name+" loaded", nil)
 	gp.processed = metrics.GetOrRegisterTimer(gp.Name+" processed", nil)
 	gp.retries = metrics.GetOrRegisterCounter(gp.Name+" retry", nil)
@@ -86,22 +81,6 @@ func (gp *GroupProcessor) logMetrics() {
 		"skipped":     gp.skipped.Count(),
 	}).Debug("messages")
 }
-
-// func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
-// 	t := time.NewTicker(gp.TrackInterval)
-//
-// 	for {
-// 		select {
-// 		case <-w.Closer():
-// 			t.Stop()
-// 			w.Done()
-// 			return
-// 		case <-t.C:
-// 			gp.logMetrics()
-// 			gp.Processor.OnTrack()
-// 		}
-// 	}
-// }
 
 func (gp *GroupProcessor) loadMsg(msg interface{}) {
 	start := time.Now()
@@ -202,9 +181,6 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 
 // Run the GroupProcessor consisting of trackPool, savePool and loadPool
 func (gp *GroupProcessor) Run() {
-	// if gp.trackPool != nil {
-	// 	gp.trackPool.Run()
-	// }
 	gp.savePool.Run()
 	gp.loadPool.Run()
 }
@@ -219,12 +195,6 @@ func (gp *GroupProcessor) Close() {
 
 	gp.log.Info("save pool shutdown")
 	gp.savePool.Close()
-
-	// if gp.trackPool != nil {
-	// 	gp.log.Info("track pool shutdown")
-	// 	gp.trackPool.Close()
-	// 	gp.trackPool = nil
-	// }
 
 	gp.log.Infof("group processor shutdown done")
 }
