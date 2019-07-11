@@ -10,4 +10,5 @@ require (
 	github.com/remerge/cue v0.0.0-20180404154012-5ce627d813ef
 	github.com/remerge/go-worker_pool v0.0.0-20190319014350-71378d2820a6
 	github.com/remerge/go-xorshift v0.0.0-20190107192416-9e21cadd0c37
+	github.com/stretchr/testify v1.3.0
 )
