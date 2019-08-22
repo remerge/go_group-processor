@@ -141,10 +141,6 @@ func (p *SaramaProcessor) OnProcessed(processable Processable) {
 
 func (p *SaramaProcessor) OnSkip(processable Processable, err error) {
 	msg := processable.Value().(*sarama.ConsumerMessage)
-	if p.AssertError != nil && p.AssertError(err) {
-		_ = p.handler.manager.ReleaseSession(nil, msg.Headers)
-		return
-	}
 	_ = p.handler.manager.ConfirmMessage(msg)
 	p.DefaultProcessor.OnSkip(processable, err)
 	return
