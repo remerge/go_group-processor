@@ -140,17 +140,9 @@ func (gp *GroupProcessor) saveMsg(processable Processable) {
 		return
 	}
 
-	if gp.MaxRetries > 0 {
-		bo := backoff.NewExponentialBackOff()
-		for i := 0; i < gp.MaxRetries; i++ {
-			gp.log.WithFields(cue.Fields{
-				"key":     processable.Key(),
-				"value":   processable.Value(),
-				"backoff": bo,
-			}).Warn("retrying failed message")
-			time.Sleep(bo.NextBackOff())
-
-			gp.retries.Inc(1)
+	for i := 0; i < gp.MaxRetries; i++ {
+		gp.Processor.OnRetry(processable)
+		gp.retries.Inc(1)
 
 			if err = gp.trySaveMsg(processable); err == nil {
 				return

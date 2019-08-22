@@ -37,7 +37,12 @@ func (p *DefaultProcessor) OnProcessed(processable Processable) {
 	}).Debug("processed message")
 }
 
-func (p *DefaultProcessor) OnRetry(_ Processable) {}
+func (p *DefaultProcessor) OnRetry(processable Processable) {
+	p.log.WithFields(cue.Fields{
+		"value": processable.Value(),
+		"key":   processable.Key(),
+	}).Warn("retrying failed message")
+}
 
 func (p *DefaultProcessor) OnSkip(processable Processable, err error) {
 	// nolint: errcheck
