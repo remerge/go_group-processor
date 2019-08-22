@@ -55,21 +55,22 @@ func TestNewSimpleSessionManager(t *testing.T) {
 	var declared []*sarama.ConsumerMessage
 
 	for i := 0; i < 12; i++ {
-		msg1, _ := m.DeclareMessage(sess, &sarama.ConsumerMessage{
+		msg := &sarama.ConsumerMessage{
 			Topic:     "test",
 			Partition: 0,
 			Offset:    int64(i),
-		})
-		declared = append(declared, msg1)
+		}
+		declared = append(declared, msg)
+		assert.NoError(t, m.DeclareMessage(sess, msg))
 	}
 
 	// confirm 10
-	_ = m.ConfirmMessage(declared[10])
+	assert.NoError(t, m.ConfirmMessage(declared[10]))
 
 	assert.Empty(t, sess.Results())
 
 	for i := 0; i < 10; i++ {
-		_ = m.ConfirmMessage(declared[i])
+		assert.NoError(t, m.ConfirmMessage(declared[i]))
 	}
 
 	assert.Equal(t, []string{"test-0-0", "test-0-1", "test-0-2", "test-0-3", "test-0-4", "test-0-5", "test-0-6", "test-0-7", "test-0-8", "test-0-9", "test-0-10"}, sess.Results())
