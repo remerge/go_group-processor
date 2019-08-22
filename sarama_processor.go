@@ -57,8 +57,6 @@ type SaramaProcessorConfig struct {
 	Brokers     string
 	Topic       string
 	GroupGen    int
-	AssertError func(error) bool // Optional error assertion. If it's nil or returns false Processor will silently confirm message. Otherwise fail whole session.
-
 	Config *sarama.Config
 }
 
