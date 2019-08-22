@@ -53,11 +53,11 @@ func (ls *SaramaLoadSaver) Load(value interface{}) Processable {
 }
 
 type SaramaProcessorConfig struct {
-	Name        string
-	Brokers     string
-	Topic       string
-	GroupGen    int
-	Config *sarama.Config
+	Name     string
+	Brokers  string
+	Topic    string
+	GroupGen int
+	Config   *sarama.Config
 }
 
 // SaramaProcessor is a Processor that reads messages from a Kafka topic with a

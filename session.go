@@ -15,7 +15,7 @@ var (
 )
 
 type SequenceSessionManager struct {
-	sess       sarama.ConsumerGroupSession
+	sess     sarama.ConsumerGroupSession
 	declared map[partitionKey][]*managedMessage
 	mu       sync.Mutex
 }
