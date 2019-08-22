@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/Shopify/sarama v1.22.1
+	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/pierrec/lz4 v2.0.5+incompatible // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
 	github.com/remerge/cue v0.0.0-20180404154012-5ce627d813ef

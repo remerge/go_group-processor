@@ -4,6 +4,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/cenkalti/backoff"
 	"github.com/rcrowley/go-metrics"
 	"github.com/remerge/cue"
 	wp "github.com/remerge/go-worker_pool"
@@ -140,13 +141,18 @@ func (gp *GroupProcessor) saveMsg(processable Processable) {
 	}
 
 	for i := 0; i < gp.MaxRetries; i++ {
+		bo := backoff.NewExponentialBackOff()
 		gp.Processor.OnRetry(processable)
+		time.Sleep(bo.NextBackOff())
 		gp.retries.Inc(1)
 
 		if err = gp.trySaveMsg(processable); err == nil {
 			return
 		}
 	}
+
+	gp.Processor.OnSkip(processable, err)
+	gp.skipped.Inc(1)
 }
 
 func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
