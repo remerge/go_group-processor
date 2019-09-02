@@ -143,8 +143,6 @@ func (p *SaramaProcessor) OnSkip(processable Processable, err error) {
 	p.DefaultProcessor.OnSkip(processable, err)
 }
 
-func (p *SaramaProcessor) OnTrack() {}
-
 // Close all pools, save offsets and close Kafka-connections
 func (p *SaramaProcessor) Close() {
 	p.log.Info("consumer group shutdown")
