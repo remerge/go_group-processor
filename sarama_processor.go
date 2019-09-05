@@ -1,15 +1,13 @@
 package groupprocessor
 
 import (
+	"context"
 	"fmt"
 	"hash/fnv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/remerge/cue"
-	wp "github.com/remerge/go-worker_pool"
 	rand "github.com/remerge/go-xorshift"
 )
 
@@ -18,7 +16,9 @@ type SaramaProcessable struct {
 }
 
 func NewSaramaProcessable(value *sarama.ConsumerMessage) *SaramaProcessable {
-	return &SaramaProcessable{value: value}
+	return &SaramaProcessable{
+		value: value,
+	}
 }
 
 func (p *SaramaProcessable) Key() int {
@@ -52,246 +52,136 @@ func (ls *SaramaLoadSaver) Load(value interface{}) Processable {
 	}
 }
 
-// SaramaProcessor is a Processor that reads messages from a Kafka topic with a
-// group consumer and tracks offsets of processed messages
-type SaramaProcessor struct {
-	DefaultProcessor
-
-	*SaramaProcessorConfig
-
-	sync.RWMutex
-
-	client   sarama.Client
-	consumer sarama.ConsumerGroup
-
-	messages    chan interface{}
-	messagePool *wp.Pool
-
-	loadedOffsets   map[int32]int64
-	inFlightOffsets map[int32]map[int64]*sarama.ConsumerMessage
-}
-
 type SaramaProcessorConfig struct {
 	Name     string
 	Brokers  string
 	Topic    string
 	GroupGen int
+	Config   *sarama.Config
+}
 
-	Config *sarama.Config
+// SaramaProcessor is a Processor that reads messages from a Kafka topic with a
+// group consumer and tracks offsets of processed messages
+type SaramaProcessor struct {
+	*SaramaProcessorConfig
+
+	DefaultProcessor
+
+	handler  *ProcessorConsumerGroupHandler
+	consumer *Consumer
+
+	messages chan interface{}
 }
 
 // NewSaramaProcessor create a new SaramaProcessor which includes a Kafka group consumer as source
 // for messages for this processor look
 func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err error) {
-	p = &SaramaProcessor{SaramaProcessorConfig: config}
-	if err = p.init(); err != nil {
+	p = &SaramaProcessor{
+		SaramaProcessorConfig: config,
+		messages:              make(chan interface{}),
+	}
+	p.ID = fmt.Sprintf("%v.%v", p.Name, p.Topic)
+	if err = p.DefaultProcessor.New(); err != nil {
 		return nil, err
 	}
-	return p, nil
-}
-
-func (p *SaramaProcessor) SetOffset(partition int32, offset int64, autoCorrectOffsets bool) error {
-	p.RLock()
-	defer p.RUnlock()
-
-	oldest, err := p.client.GetOffset(p.Topic, partition, sarama.OffsetOldest)
-
-	if err != nil {
-		return err
-	}
-
-	newest, err := p.client.GetOffset(p.Topic, partition, sarama.OffsetNewest)
-
-	if err != nil {
-		return err
-	}
-
-	if offset < oldest {
-		if !autoCorrectOffsets {
-			return fmt.Errorf("Requested offset %d out of range for %s/%d. Oldest available offset is %d", offset, p.Topic, partition, oldest)
-		}
-
-		p.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d", p.Topic, partition, offset, oldest)
-		offset = oldest
-	}
-
-	if offset > newest {
-		if !autoCorrectOffsets {
-			return fmt.Errorf("Requested offset %d out of range for %s/%d. Newest available offset is %d", offset, p.Topic, partition, newest)
-		}
-
-		p.log.Warnf("Offset of %s/%d out of range. Corrected offset from %d to %d", p.Topic, partition, offset, newest)
-		offset = newest
-	}
-
-	p.consumer.ResetOffset(p.Topic, partition, offset, "")
-	p.consumer.MarkOffset(p.Topic, partition, offset, "")
-
-	return nil
-}
-
-// New initializes the SaramaProcessor once it's instantiated
-func (p *SaramaProcessor) init() (err error) {
-	p.ID = fmt.Sprintf("%v.%v", p.Name, p.Topic)
-
-	if err = p.DefaultProcessor.New(); err != nil {
-		return err
-	}
+	p.handler = NewProcessorConsumerGroupHandler(p.messages)
 
 	if p.Config == nil {
 		p.Config = sarama.NewConfig()
 		p.Config.Consumer.MaxProcessingTime = 30 * time.Second
 		p.Config.Consumer.Offsets.Initial = sarama.OffsetOldest
-		p.Config.Group.Return.Notifications = true
+		p.Config.Consumer.Return.Errors = true
 	}
 
 	p.Config.ClientID = p.ID
-	p.Config.Version = sarama.V0_10_0_0
+	p.Config.Version = sarama.V0_10_2_0
 
-	p.client, err = sarama.NewClient(
-		strings.Split(p.Brokers, ","),
+	p.consumer, err = Consume(
+		context.Background(),
 		p.Config,
-	)
+		strings.Split(p.Brokers, ","),
+		ConsumerConfig{
+			GroupID: fmt.Sprintf("%s.%s.%d", p.Name, p.Topic, p.GroupGen),
+			Topics:  []string{p.Topic},
+			Handler: p.handler,
+			OnError: func(e error) error {
+				switch err1 := e.(type) {
+				case *sarama.ConsumerError:
+					if kafkaErr, isKafkaErr := err1.Err.(sarama.KError); isKafkaErr {
+						switch kafkaErr {
+						case sarama.ErrRequestTimedOut:
+							return nil
+						default:
+							return e
+						}
+					}
+					return e
+				default:
+					return e
+				}
+			},
+		})
 
-	if err != nil {
-		return err
-	}
-
-	group := fmt.Sprintf("%s.%s.%d", p.Name, p.Topic, p.GroupGen)
-	p.consumer, err = sarama.NewConsumerGroupFromClient(
-		p.client,
-		group,
-		[]string{p.Topic},
-	)
-
-	if err != nil {
-		return err
-	}
-
-	p.messages = make(chan interface{})
-	p.messagePool = wp.NewPool(p.ID+".messages", 1, p.messageWorker)
-	p.messagePool.Run()
-
-	p.loadedOffsets = make(map[int32]int64)
-	p.inFlightOffsets = make(map[int32]map[int64]*sarama.ConsumerMessage)
-
-	return nil
-}
-
-func (p *SaramaProcessor) messageWorker(w *wp.Worker) {
-	for {
-		select {
-		case <-w.Closer():
-			w.Done()
-			return
-		case msg, ok := <-p.consumer.Messages():
-			if ok {
-				p.messages <- msg
-			} else {
-				w.Done()
-				return
-			}
-		case n, ok := <-p.consumer.Notifications():
-			if !ok {
-				break
-			}
-			p.log.WithFields(cue.Fields{
-				"added":    n.Claimed,
-				"current":  n.Current,
-				"released": n.Released,
-			}).Infof("group rebalance")
-		}
-	}
+	return p, nil
 }
 
 func (p *SaramaProcessor) Messages() chan interface{} {
 	return p.messages
 }
 
-func (p *SaramaProcessor) Wait() {
-	p.messagePool.Wait()
-}
-
-func (p *SaramaProcessor) OnLoad(processable Processable) {
-	msg := processable.Value().(*sarama.ConsumerMessage)
-
-	p.Lock()
-	defer p.Unlock()
-
-	if p.loadedOffsets[msg.Partition] < msg.Offset {
-		p.loadedOffsets[msg.Partition] = msg.Offset
-	}
-
-	if p.inFlightOffsets[msg.Partition] == nil {
-		p.inFlightOffsets[msg.Partition] = make(
-			map[int64]*sarama.ConsumerMessage,
-		)
-	}
-
-	p.inFlightOffsets[msg.Partition][msg.Offset] = msg
-}
+func (p *SaramaProcessor) OnLoad(_ Processable) {}
 
 func (p *SaramaProcessor) OnProcessed(processable Processable) {
-	p.processableFinished(processable)
+	msg := processable.Value().(*sarama.ConsumerMessage)
+	_ = p.handler.manager.ConfirmMessage(msg)
 	p.DefaultProcessor.OnProcessed(processable)
 }
 
 func (p *SaramaProcessor) OnSkip(processable Processable, err error) {
-	p.processableFinished(processable)
-	p.DefaultProcessor.OnSkip(processable, err)
-}
-
-// processableFinished is called either once the processable is successfully
-// processed (OnProcessed) or when all of the retries were exhausted (OnSkip).
-func (p *SaramaProcessor) processableFinished(processable Processable) {
 	msg := processable.Value().(*sarama.ConsumerMessage)
-
-	p.Lock()
-	defer p.Unlock()
-
-	delete(p.inFlightOffsets[msg.Partition], msg.Offset)
-}
-
-func (p *SaramaProcessor) OnTrack() {
-	p.RLock()
-	defer p.RUnlock()
-
-	offsets := make(map[int32]int64)
-
-	// when all messages have been processed p.inFlightOffsets is empty, so we
-	// use the latest loaded offset for commit instead
-	for partition, offset := range p.loadedOffsets {
-		offsets[partition] = offset
-	}
-
-	for partition, offsetMap := range p.inFlightOffsets {
-		for offset := range offsetMap {
-			if offsets[partition] == 0 || offset < offsets[partition] {
-				offsets[partition] = offset
-			}
-		}
-	}
-
-	for partition, offset := range offsets {
-		p.consumer.MarkOffset(p.Topic, partition, offset+1, "")
-	}
+	_ = p.handler.manager.ConfirmMessage(msg)
+	p.DefaultProcessor.OnSkip(processable, err)
 }
 
 // Close all pools, save offsets and close Kafka-connections
 func (p *SaramaProcessor) Close() {
-	p.log.Info("save consumer offsets")
-	p.OnTrack()
-
 	p.log.Info("consumer group shutdown")
-	// nolint: errcheck
-	p.log.Error(p.consumer.Close(), "consumer group shutdown failed")
-
-	p.log.Info("kafka client shutdown")
-	// nolint: errcheck
-	p.log.Error(p.client.Close(), "kafka client shutdown failed")
-
-	p.log.Info("message pool shutdown")
-	p.messagePool.Close()
+	_ = p.log.Error(p.consumer.Close(), "consumer group shutdown failed")
 
 	p.log.Infof("processor shutdown done")
+}
+
+func (p *SaramaProcessor) Wait() {
+	_ = p.consumer.Wait()
+}
+
+type ProcessorConsumerGroupHandler struct {
+	messageChan chan interface{}
+	manager     *SequenceSessionManager
+}
+
+func NewProcessorConsumerGroupHandler(ch chan interface{}) *ProcessorConsumerGroupHandler {
+	return &ProcessorConsumerGroupHandler{
+		messageChan: ch,
+		manager:     NewSequenceSessionManager(),
+	}
+}
+
+func (h *ProcessorConsumerGroupHandler) Setup(sess sarama.ConsumerGroupSession) error {
+	return h.manager.AttachSession(sess)
+}
+
+func (h *ProcessorConsumerGroupHandler) Cleanup(sess sarama.ConsumerGroupSession) error {
+	return h.manager.ReleaseSession(sess)
+}
+
+func (h *ProcessorConsumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	for msg := range claim.Messages() {
+		err := h.manager.DeclareMessage(sess, msg)
+		if err != nil {
+			return nil
+		}
+		h.messageChan <- msg
+	}
+	return nil
 }

@@ -15,9 +15,8 @@ import (
 type GroupProcessor struct {
 	*Config
 
-	loadPool  *wp.Pool
-	savePool  *wp.Pool
-	trackPool *wp.Pool
+	loadPool *wp.Pool
+	savePool *wp.Pool
 
 	loaded    metrics.Timer
 	processed metrics.Timer
@@ -62,10 +61,6 @@ func (gp *GroupProcessor) init() (err error) {
 	gp.loadPool = wp.NewPool(gp.Name+".load", gp.NumLoadWorker, gp.loadWorker)
 	gp.savePool = wp.NewPool(gp.Name+".save", gp.NumSaveWorker, gp.saveWorker)
 
-	if gp.TrackInterval > 0 {
-		gp.trackPool = wp.NewPool(gp.Name+".track", 1, gp.trackWorker)
-	}
-
 	gp.loaded = metrics.GetOrRegisterTimer(gp.Name+" loaded", nil)
 	gp.processed = metrics.GetOrRegisterTimer(gp.Name+" processed", nil)
 	gp.retries = metrics.GetOrRegisterCounter(gp.Name+" retry", nil)
@@ -85,22 +80,6 @@ func (gp *GroupProcessor) logMetrics() {
 		"retries":     gp.retries.Count(),
 		"skipped":     gp.skipped.Count(),
 	}).Debug("messages")
-}
-
-func (gp *GroupProcessor) trackWorker(w *wp.Worker) {
-	t := time.NewTicker(gp.TrackInterval)
-
-	for {
-		select {
-		case <-w.Closer():
-			t.Stop()
-			w.Done()
-			return
-		case <-t.C:
-			gp.logMetrics()
-			gp.Processor.OnTrack()
-		}
-	}
 }
 
 func (gp *GroupProcessor) loadMsg(msg interface{}) {
@@ -161,22 +140,14 @@ func (gp *GroupProcessor) saveMsg(processable Processable) {
 		return
 	}
 
-	if gp.MaxRetries > 0 {
+	for i := 0; i < gp.MaxRetries; i++ {
 		bo := backoff.NewExponentialBackOff()
-		for i := 0; i < gp.MaxRetries; i++ {
-			gp.log.WithFields(cue.Fields{
-				"key":     processable.Key(),
-				"value":   processable.Value(),
-				"backoff": bo,
-			}).Warn("retrying failed message")
-			gp.Processor.OnRetry(processable)
-			time.Sleep(bo.NextBackOff())
+		gp.Processor.OnRetry(processable)
+		time.Sleep(bo.NextBackOff())
+		gp.retries.Inc(1)
 
-			gp.retries.Inc(1)
-
-			if err = gp.trySaveMsg(processable); err == nil {
-				return
-			}
+		if err = gp.trySaveMsg(processable); err == nil {
+			return
 		}
 	}
 
@@ -203,9 +174,6 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 
 // Run the GroupProcessor consisting of trackPool, savePool and loadPool
 func (gp *GroupProcessor) Run() {
-	if gp.trackPool != nil {
-		gp.trackPool.Run()
-	}
 	gp.savePool.Run()
 	gp.loadPool.Run()
 }
@@ -220,12 +188,6 @@ func (gp *GroupProcessor) Close() {
 
 	gp.log.Info("save pool shutdown")
 	gp.savePool.Close()
-
-	if gp.trackPool != nil {
-		gp.log.Info("track pool shutdown")
-		gp.trackPool.Close()
-		gp.trackPool = nil
-	}
 
 	gp.log.Infof("group processor shutdown done")
 }

@@ -10,7 +10,6 @@ type Processor interface {
 	OnProcessed(Processable)
 	OnRetry(Processable)
 	OnSkip(Processable, error)
-	OnTrack()
 	Wait()
 	Close()
 }
@@ -49,9 +48,6 @@ func (p *DefaultProcessor) OnSkip(processable Processable, err error) {
 	p.log.WithFields(cue.Fields{
 		"value": processable.Value(),
 	}).Error(err, "skipping message after all retries")
-}
-
-func (p *DefaultProcessor) OnTrack() {
 }
 
 func (p *DefaultProcessor) Close() {
