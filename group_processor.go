@@ -33,7 +33,6 @@ type Config struct {
 	MaxRetries    int
 	NumLoadWorker int
 	NumSaveWorker int
-	TrackInterval time.Duration
 
 	Processor Processor
 	LoadSaver LoadSaver

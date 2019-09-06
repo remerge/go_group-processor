@@ -69,7 +69,6 @@ func createTestSaramaGroupProcessor(t *testing.T, loadSaver LoadSaver) *GroupPro
 		MaxRetries:    1,
 		NumLoadWorker: 1,
 		NumSaveWorker: 1,
-		TrackInterval: 1 * time.Second,
 		LoadSaver:     loadSaver,
 	})
 	if err != nil {
