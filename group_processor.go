@@ -18,7 +18,7 @@ type GroupProcessor struct {
 
 	loadPool *wp.Pool
 	savePool *wp.Pool
-	wg sync.WaitGroup
+	wg       sync.WaitGroup
 
 	loaded    metrics.Timer
 	processed metrics.Timer
@@ -38,7 +38,6 @@ type Config struct {
 
 	Processor Processor
 	LoadSaver LoadSaver
-
 }
 
 // New creates a new GroupProcessor
