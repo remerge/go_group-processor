@@ -121,7 +121,9 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 				}
 			},
 		})
-
+	if err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
