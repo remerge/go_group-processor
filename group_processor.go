@@ -175,7 +175,7 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 
 // Run the GroupProcessor consisting of trackPool, savePool and loadPool
 func (gp *GroupProcessor) Run() {
-	gp.wg.Add(2)
+	gp.wg.Add(3)
 	gp.savePool.Run()
 	gp.loadPool.Run()
 	go func() {
@@ -184,6 +184,10 @@ func (gp *GroupProcessor) Run() {
 	}()
 	go func() {
 		gp.loadPool.Wait()
+		gp.wg.Done()
+	}()
+	go func() {
+		gp.Processor.Wait()
 		gp.wg.Done()
 	}()
 }
