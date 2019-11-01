@@ -153,8 +153,8 @@ func (p *SaramaProcessor) Close() {
 	p.log.Infof("processor shutdown done")
 }
 
-func (p *SaramaProcessor) Wait() {
-	_ = p.log.Error(p.consumer.Wait(), "consumer group shutdown failed")
+func (p *SaramaProcessor) Wait() error {
+	return p.log.Error(p.consumer.Wait(), "consumer group shutdown failed")
 }
 
 type ProcessorConsumerGroupHandler struct {

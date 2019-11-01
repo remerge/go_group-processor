@@ -19,6 +19,7 @@ type GroupProcessor struct {
 	loadPool *wp.Pool
 	savePool *wp.Pool
 	wg       sync.WaitGroup
+	exitErr  error
 
 	loaded    metrics.Timer
 	processed metrics.Timer
@@ -187,13 +188,14 @@ func (gp *GroupProcessor) Run() {
 		gp.wg.Done()
 	}()
 	go func() {
-		gp.Processor.Wait()
+		gp.exitErr = gp.Processor.Wait()
 		gp.wg.Done()
 	}()
 }
 
-func (gp *GroupProcessor) Wait() {
+func (gp *GroupProcessor) Wait() error {
 	gp.wg.Wait()
+	return gp.exitErr
 }
 
 // Close all pools

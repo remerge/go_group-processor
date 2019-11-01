@@ -10,7 +10,7 @@ type Processor interface {
 	OnProcessed(Processable)
 	OnRetry(Processable)
 	OnSkip(Processable, error)
-	Wait()
+	Wait() error
 	Close()
 }
 
