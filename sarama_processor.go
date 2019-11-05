@@ -154,7 +154,11 @@ func (p *SaramaProcessor) Close() {
 }
 
 func (p *SaramaProcessor) Wait() error {
-	return p.log.Error(p.consumer.Wait(), "consumer group shutdown failed")
+	if err := p.consumer.Wait(); err != nil {
+		p.log.Warnf("consumer group failed: %v", err)
+		return err
+	}
+	return nil
 }
 
 type ProcessorConsumerGroupHandler struct {
