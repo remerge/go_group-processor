@@ -121,7 +121,9 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 				}
 			},
 		})
-
+	if err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
@@ -151,8 +153,12 @@ func (p *SaramaProcessor) Close() {
 	p.log.Infof("processor shutdown done")
 }
 
-func (p *SaramaProcessor) Wait() {
-	_ = p.consumer.Wait()
+func (p *SaramaProcessor) Wait() error {
+	if err := p.consumer.Wait(); err != nil {
+		p.log.Warnf("consumer group failed: %v", err)
+		return err
+	}
+	return nil
 }
 
 type ProcessorConsumerGroupHandler struct {

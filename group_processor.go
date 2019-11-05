@@ -2,6 +2,7 @@ package groupprocessor
 
 import (
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff"
@@ -17,6 +18,8 @@ type GroupProcessor struct {
 
 	loadPool *wp.Pool
 	savePool *wp.Pool
+	wg       sync.WaitGroup
+	exitErr  error
 
 	loaded    metrics.Timer
 	processed metrics.Timer
@@ -173,8 +176,26 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 
 // Run the GroupProcessor consisting of trackPool, savePool and loadPool
 func (gp *GroupProcessor) Run() {
+	gp.wg.Add(3)
 	gp.savePool.Run()
 	gp.loadPool.Run()
+	go func() {
+		gp.savePool.Wait()
+		gp.wg.Done()
+	}()
+	go func() {
+		gp.loadPool.Wait()
+		gp.wg.Done()
+	}()
+	go func() {
+		gp.exitErr = gp.Processor.Wait()
+		gp.wg.Done()
+	}()
+}
+
+func (gp *GroupProcessor) Wait() error {
+	gp.wg.Wait()
+	return gp.exitErr
 }
 
 // Close all pools
