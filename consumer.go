@@ -57,6 +57,7 @@ func Consume(ctx context.Context, saramaConfig *sarama.Config, brokers []string,
 					return
 				case consumeErr, ok := <-group.Errors():
 					if !ok {
+						c.cancelFn()
 						return
 					}
 					if fnErr := config.OnError(consumeErr); fnErr != nil {
