@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/rcrowley/go-metrics"
 	rand "github.com/remerge/go-xorshift"
 )
 
@@ -162,8 +163,9 @@ func (p *SaramaProcessor) Wait() error {
 }
 
 type ProcessorConsumerGroupHandler struct {
-	messageChan chan interface{}
-	manager     *SequenceSessionManager
+	messageChan     chan interface{}
+	manager         *SequenceSessionManager
+	metricsRegistry metrics.Registry
 }
 
 func NewProcessorConsumerGroupHandler(ch chan interface{}) *ProcessorConsumerGroupHandler {
@@ -182,6 +184,10 @@ func (h *ProcessorConsumerGroupHandler) Cleanup(sess sarama.ConsumerGroupSession
 }
 
 func (h *ProcessorConsumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
+	g := metrics.GetOrRegisterGauge(fmt.Sprintf(
+		"ggp,topic=%s,partition=%d,member=%s session", claim.Topic(), claim.Partition(), sess.MemberID()), nil)
+	defer g.Update(0)
+	g.Update(int64(sess.GenerationID()))
 	for msg := range claim.Messages() {
 		err := h.manager.DeclareMessage(sess, msg)
 		if err != nil {
