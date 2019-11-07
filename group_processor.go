@@ -189,6 +189,8 @@ func (gp *GroupProcessor) Run() {
 	}()
 	go func() {
 		gp.exitErr = gp.Processor.Wait()
+		gp.loadPool.Close()
+		gp.savePool.Close()
 		gp.wg.Done()
 	}()
 }
@@ -202,12 +204,6 @@ func (gp *GroupProcessor) Wait() error {
 func (gp *GroupProcessor) Close() {
 	gp.log.Info("processor shutdown")
 	gp.Processor.Close()
-
-	gp.log.Info("load pool shutdown")
-	gp.loadPool.Close()
-
-	gp.log.Info("save pool shutdown")
-	gp.savePool.Close()
 
 	gp.log.Infof("group processor shutdown done")
 }
