@@ -204,6 +204,6 @@ func (gp *GroupProcessor) Wait() error {
 func (gp *GroupProcessor) Close() {
 	gp.log.Info("processor shutdown")
 	gp.Processor.Close()
-	
+
 	gp.log.Infof("group processor shutdown done")
 }
