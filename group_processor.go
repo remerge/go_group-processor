@@ -189,6 +189,10 @@ func (gp *GroupProcessor) Run() {
 	}()
 	go func() {
 		gp.exitErr = gp.Processor.Wait()
+		if gp.exitErr != nil {
+			gp.loadPool.Close()
+			gp.savePool.Close()
+		}
 		gp.wg.Done()
 	}()
 }
