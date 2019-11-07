@@ -166,7 +166,8 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 		case msg, ok := <-w.Channel():
 			if !ok {
 				gp.log.Warn("trying to read from closed worker channel")
-				continue
+				w.Done()
+				return
 			}
 
 			gp.saveMsg(msg.(Processable))
