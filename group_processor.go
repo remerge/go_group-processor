@@ -193,7 +193,7 @@ func (gp *GroupProcessor) Run() {
 		}()
 		select {
 		case <-poolsClosedCh:
-		case <-time.After(time.Second*30):
+		case <-time.After(time.Second * 30):
 		}
 
 		gp.wg.Done()

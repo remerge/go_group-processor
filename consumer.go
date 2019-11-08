@@ -2,6 +2,7 @@ package groupprocessor
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Shopify/sarama"
 )
@@ -27,6 +28,7 @@ type Consumer struct {
 	cancelFn context.CancelFunc
 
 	closedCh   chan struct{}
+	consumeErr error
 	sessionErr error
 	closeErr   error
 }
@@ -44,7 +46,9 @@ func Consume(ctx context.Context, saramaConfig *sarama.Config, brokers []string,
 	// close watchdog
 	go func() {
 		<-c.ctx.Done()
-		c.closeErr = group.Close()
+		if closeErr := group.Close(); closeErr != nil {
+			c.closeErr = fmt.Errorf("close: %s", closeErr)
+		}
 		close(c.closedCh)
 	}()
 
@@ -61,6 +65,7 @@ func Consume(ctx context.Context, saramaConfig *sarama.Config, brokers []string,
 						return
 					}
 					if fnErr := config.OnError(consumeErr); fnErr != nil {
+						c.consumeErr = fmt.Errorf("consume: %s", fnErr)
 						c.cancelFn()
 						return
 					}
@@ -78,7 +83,7 @@ func Consume(ctx context.Context, saramaConfig *sarama.Config, brokers []string,
 			}
 			sessErr := group.Consume(c.ctx, config.Topics, config.Handler)
 			if sessErr != nil {
-				c.sessionErr = sessErr
+				c.sessionErr = fmt.Errorf("session: %s", sessErr)
 				c.cancelFn()
 				return
 			}
@@ -89,7 +94,17 @@ func Consume(ctx context.Context, saramaConfig *sarama.Config, brokers []string,
 
 func (c *Consumer) Wait() error {
 	<-c.closedCh
-	return c.sessionErr
+	// combine all the errors if present
+	var failures []error
+	for _, err := range []error{c.consumeErr, c.sessionErr, c.closeErr} {
+		if err != nil {
+			failures = append(failures, err)
+		}
+	}
+	if len(failures) > 0 {
+		return fmt.Errorf("%v", failures)
+	}
+	return nil
 }
 
 func (c *Consumer) Close() error {
