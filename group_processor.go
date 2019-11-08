@@ -183,8 +183,6 @@ func (gp *GroupProcessor) Run() {
 
 	go func() {
 		gp.exitErr = gp.Processor.Wait()
-		gp.savePool.Close()
-		gp.loadPool.Close()
 		gp.wg.Done()
 	}()
 }
