@@ -113,6 +113,7 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 						case sarama.ErrRequestTimedOut:
 							return nil
 						default:
+							_ = p.log.Error(err1, "unrecoverable Kafka error")
 							return e
 						}
 					}

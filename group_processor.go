@@ -166,7 +166,8 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 		case msg, ok := <-w.Channel():
 			if !ok {
 				gp.log.Warn("trying to read from closed worker channel")
-				continue
+				w.Done()
+				return
 			}
 
 			gp.saveMsg(msg.(Processable))
@@ -176,21 +177,24 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 
 // Run the GroupProcessor consisting of trackPool, savePool and loadPool
 func (gp *GroupProcessor) Run() {
-	gp.wg.Add(3)
+	gp.wg.Add(1)
 	gp.savePool.Run()
 	gp.loadPool.Run()
-	go func() {
-		gp.savePool.Wait()
-		gp.wg.Done()
-	}()
-	go func() {
-		gp.loadPool.Wait()
-		gp.wg.Done()
-	}()
+
 	go func() {
 		gp.exitErr = gp.Processor.Wait()
-		gp.loadPool.Close()
-		gp.savePool.Close()
+		poolClosedCh := make(chan struct{})
+		go func() {
+			// pools should be closed to avoid infinite goroutines
+			gp.savePool.Close()
+			gp.loadPool.Close()
+			close(poolClosedCh)
+		}()
+
+		select {
+		case <-poolClosedCh:
+		case <-time.After(time.Second * 30):
+		}
 		gp.wg.Done()
 	}()
 }
