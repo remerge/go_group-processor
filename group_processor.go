@@ -176,21 +176,26 @@ func (gp *GroupProcessor) saveWorker(w *wp.Worker) {
 
 // Run the GroupProcessor consisting of trackPool, savePool and loadPool
 func (gp *GroupProcessor) Run() {
-	gp.wg.Add(3)
+	gp.wg.Add(1)
 	gp.savePool.Run()
 	gp.loadPool.Run()
 	go func() {
-		gp.savePool.Wait()
-		gp.wg.Done()
-	}()
-	go func() {
-		gp.loadPool.Wait()
-		gp.wg.Done()
-	}()
-	go func() {
 		gp.exitErr = gp.Processor.Wait()
-		gp.loadPool.Close()
-		gp.savePool.Close()
+
+		// this workaround old implementation of go-service that tracks
+		// for working goroutines. can be deleted after services are migrated
+		// to a new go-service implementation.
+		poolsClosedCh := make(chan struct{})
+		go func() {
+			gp.loadPool.Close()
+			gp.savePool.Close()
+			close(poolsClosedCh)
+		}()
+		select {
+		case <-poolsClosedCh:
+		case <-time.After(time.Second*30):
+		}
+
 		gp.wg.Done()
 	}()
 }
