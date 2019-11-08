@@ -183,17 +183,8 @@ func (gp *GroupProcessor) Run() {
 
 	go func() {
 		gp.exitErr = gp.Processor.Wait()
-		poolsClosedCh := make(chan struct{})
-		go func() {
-			gp.savePool.Wait()
-			gp.loadPool.Wait()
-			close(poolsClosedCh)
-		}()
-
-		select {
-		case <-poolsClosedCh:
-		case <-time.After(time.Second * 30):
-		}
+		gp.savePool.Close()
+		gp.loadPool.Close()
 		gp.wg.Done()
 	}()
 }
