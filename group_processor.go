@@ -181,21 +181,6 @@ func (gp *GroupProcessor) Run() {
 	gp.loadPool.Run()
 	go func() {
 		gp.exitErr = gp.Processor.Wait()
-
-		// this workaround old implementation of go-service that tracks
-		// for working goroutines. can be deleted after services are migrated
-		// to a new go-service implementation.
-		poolsClosedCh := make(chan struct{})
-		go func() {
-			gp.loadPool.Close()
-			gp.savePool.Close()
-			close(poolsClosedCh)
-		}()
-		select {
-		case <-poolsClosedCh:
-		case <-time.After(time.Second * 30):
-		}
-
 		gp.wg.Done()
 	}()
 }
