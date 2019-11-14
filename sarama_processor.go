@@ -150,7 +150,7 @@ func (p *SaramaProcessor) OnSkip(processable Processable, err error) {
 // Close all pools, save offsets and close Kafka-connections
 func (p *SaramaProcessor) Close() {
 	p.log.Info("consumer group shutdown")
-	_ = p.log.Error(p.consumer.Close(), "consumer group shutdown failed")
+	p.log.Warnf("consumer group shutdown failed: %v", p.consumer.Close())
 
 	p.log.Infof("processor shutdown done")
 }
