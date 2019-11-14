@@ -110,6 +110,7 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 				// detect generic errors
 				switch err {
 				case io.EOF:
+					p.log.Warnf("recoverable consume error %v", err)
 					return nil
 				}
 				switch err1 := e.(type) {
@@ -120,6 +121,7 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 							sarama.ErrRebalanceInProgress,
 							sarama.ErrOffsetsLoadInProgress,
 							sarama.ErrNotCoordinatorForConsumer:
+							p.log.Warnf("recoverable consume error %v", kafkaErr)
 							return nil
 						default:
 							p.log.Warnf("unrecoverable consume error %v", kafkaErr)
