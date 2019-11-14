@@ -118,7 +118,8 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 						switch kafkaErr {
 						case sarama.ErrRequestTimedOut,
 							sarama.ErrRebalanceInProgress,
-							sarama.ErrOffsetsLoadInProgress:
+							sarama.ErrOffsetsLoadInProgress,
+							sarama.ErrNotCoordinatorForConsumer:
 							return nil
 						default:
 							p.log.Warnf("unrecoverable consume error %v", kafkaErr)
