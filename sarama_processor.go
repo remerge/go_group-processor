@@ -120,7 +120,8 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 						case sarama.ErrRequestTimedOut,
 							sarama.ErrRebalanceInProgress,
 							sarama.ErrOffsetsLoadInProgress,
-							sarama.ErrNotCoordinatorForConsumer:
+							sarama.ErrNotCoordinatorForConsumer,
+							sarama.ErrUnknownMemberId:
 							p.log.Warnf("recoverable consume error %v", kafkaErr)
 							return nil
 						default:
