@@ -65,7 +65,7 @@ func Consume(ctx context.Context, saramaConfig *sarama.Config, brokers []string,
 						return
 					}
 					if fnErr := config.OnError(consumeErr); fnErr != nil {
-						c.consumeErr = fmt.Errorf("consume: %s", fnErr)
+						c.consumeErr = fmt.Errorf("consume: %s", consumeErr)
 						c.cancelFn()
 						return
 					}
@@ -82,7 +82,7 @@ func Consume(ctx context.Context, saramaConfig *sarama.Config, brokers []string,
 			default:
 			}
 			sessErr := group.Consume(c.ctx, config.Topics, config.Handler)
-			if sessErr != nil {
+			if fnErr := config.OnError(sessErr); fnErr != nil {
 				c.sessionErr = fmt.Errorf("session: %s", sessErr)
 				c.cancelFn()
 				return

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/rcrowley/go-metrics"
 	rand "github.com/remerge/go-xorshift"
 )
@@ -106,21 +107,10 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 			Topics:  []string{p.Topic},
 			Handler: p.handler,
 			OnError: func(e error) error {
-				switch err1 := e.(type) {
-				case *sarama.ConsumerError:
-					if kafkaErr, isKafkaErr := err1.Err.(sarama.KError); isKafkaErr {
-						switch kafkaErr {
-						case sarama.ErrRequestTimedOut:
-							return nil
-						default:
-							p.log.Warnf("unrecoverable consume error %v", kafkaErr)
-							return e
-						}
-					}
-					return e
-				default:
-					return e
+				if e != nil {
+					p.log.Warnf("assertable error: %s", spew.Sdump(e))
 				}
+				return nil
 			},
 		})
 	if err != nil {
@@ -187,10 +177,14 @@ func (h *ProcessorConsumerGroupHandler) Cleanup(sess sarama.ConsumerGroupSession
 func (h *ProcessorConsumerGroupHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	g := metrics.GetOrRegisterGauge(fmt.Sprintf(
 		"ggp,topic=%s,partition=%d,member=%s session", claim.Topic(), claim.Partition(), sess.MemberID()), nil)
+	c := metrics.GetOrRegisterGauge(fmt.Sprintf(
+		"ggp,topic=%s,partition=%d offset", claim.Topic(), claim.Partition()), nil)
 	defer g.Update(0)
+	defer c.Update(0)
 	g.Update(int64(sess.GenerationID()))
 	for msg := range claim.Messages() {
 		err := h.manager.DeclareMessage(sess, msg)
+		c.Update(msg.Offset)
 		if err != nil {
 			return nil
 		}
