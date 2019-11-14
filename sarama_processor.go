@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"strings"
 	"time"
 
@@ -106,6 +107,11 @@ func NewSaramaProcessor(config *SaramaProcessorConfig) (p *SaramaProcessor, err 
 			Topics:  []string{p.Topic},
 			Handler: p.handler,
 			OnError: func(e error) error {
+				// detect generic errors
+				switch err {
+				case io.EOF:
+					return nil
+				}
 				switch err1 := e.(type) {
 				case *sarama.ConsumerError:
 					if kafkaErr, isKafkaErr := err1.Err.(sarama.KError); isKafkaErr {
