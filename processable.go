@@ -24,3 +24,9 @@ func (p *DefaultProcessable) Key() int {
 func (p *DefaultProcessable) Value() interface{} {
 	return p.value
 }
+
+func NewDefaultProcessable(value interface{}) DefaultProcessable {
+	return DefaultProcessable{
+		value: value,
+	}
+}
