@@ -1,6 +1,8 @@
 package groupprocessor
 
 import (
+	"fmt"
+
 	"github.com/remerge/cue"
 )
 
@@ -42,6 +44,14 @@ func (ls *DefaultLoadSaver) Fail(p Processable, err error) bool {
 		value = p.Value()
 	} else {
 		value = "<nil>"
+	}
+	if ls == nil {
+		fmt.Printf("DefaultLoadSaver is nil, value: %#v", value)
+		return false
+	}
+	if ls.Log == nil {
+		fmt.Printf("DefaultLoadSaver logger is nil, value: %#v", value)
+		return false
 	}
 	// nolint: errcheck
 	ls.Log.WithFields(cue.Fields{
