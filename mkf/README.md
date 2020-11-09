@@ -26,6 +26,22 @@ make dist
 
 For a specific OS/architecture the hidden target `.build/<app>.<os>.<arch>` can be used.
 
+## Go versions
+
+One of easiest ways to use multiple Go versions is [golang.org/dl](https://github.com/golang/dl):
+
+```
+GO111MODULE=off go get golang.org/dl/go1.11.6
+go1.11.6 download
+PATH=$HOME/sdk/go1.11.6/bin make lint test
+```
+
+Go version is not counted by Make targets. Use `make clean` to ensure that 
+artifacts are built against correct version.
+
+```
+make clean && PATH=$HOME/sdk/go1.11.6/bin make lint test
+```
 
 # Generating artifacts
 
@@ -66,7 +82,7 @@ Watch your Go code for changes, rebuild and run test on change.
 
 # Linting
 
-This target lints the source code using various tools: `go fmt`, the modules consistency check, `go check`, `go vet` and `revive`.
+This target lints the source code using various tools: `go fmt`, `goimports`, the modules consistency check, `go check`, `go vet` and `revive`.
 
     make lint
 
@@ -93,6 +109,15 @@ Use `REVIVELINTER_EXCLUDES` variable to add excludes.
 
 ```
 REVIVELINTER_EXCLUDES = $(foreach p,$(wildcard **/*_fsm.go),-exclude $(p))
+include mkf/Makefile.common
+```
+
+## gofmt and goimports configuration
+
+Use `GOFMT_EXCLUDES` variable to exclude files from import checking.
+
+```
+GOFMT_EXCLUDES = -not -path "./vendor/*"
 include mkf/Makefile.common
 ```
 
@@ -179,11 +204,13 @@ Afterwards `mkf/Makefile.common` can be included in the parent project. If the p
 * **app** (`Makefile.app`): common targets for building binaries and deploy them
 * **divert** (`Makefile.divert`) for deploying temporarly deploying development binaries to production
 
-#### Example
+### Example top level Makefile
 
-    REVIVELINTER_EXCLUDES = $(foreach p,$(wildcard **/*_fsm.go),-exclude $(p))
-    include mkf/Makefile.common mkf/Makefile.app
+```Makefile
+REVIVELINTER_EXCLUDES = $(foreach p,$(wildcard **/*_fsm.go),-exclude $(p))
 
+include mkf/Makefile.common mkf/Makefile.app mkf/Makefile.divert
+```
 
 ## Updating
 
@@ -195,3 +222,7 @@ To update the Makefile includes in the current repository.
 ## Travis CI configuration
 
 Every project should have a Travis CI configuration. [This example can be used as a starting point.](https://github.com/remerge/go-makefile/blob/master/travis.yaml)
+
+## CircleCI configuration
+
+To setup a project for CirlceCI please read the [Setup CircleCI guide in Confluence](https://remerge.atlassian.net/wiki/spaces/tech/pages/4030889/Creating+a+new+Go+project). This uses the config file in the `.circleci` folder as a starting point.
