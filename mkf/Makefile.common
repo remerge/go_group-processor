@@ -1,5 +1,5 @@
-
-PROJECT ?= $(notdir $(patsubst %/,%,$(CURDIR)))
+# CircleCI checks out projects into ~/project, so use the repo name instead
+PROJECT ?= $(or $(CIRCLE_PROJECT_REPONAME), $(notdir $(patsubst %/,%,$(CURDIR))))
 PACKAGE ?= github.com/remerge/$(PROJECT)
 MKF_PREFIX ?= mkf
 
@@ -8,29 +8,13 @@ GO_SOURCES = $(shell find . -type f \( -iname '*.go' \) -not \( -path "./vendor/
 
 export GO111MODULE = on
 export CGO_ENABLED = 0
+export GOPRIVATE ?= github.com/remerge/*
+
 # do not use automatic targets
 .SUFFIXES:
 
 .PHONY: clean gen
 
-
-# Code maintenance
-
-GENERATE_SOURCES ?=
-
-gen: $(GENERATE_SOURCES)
-	go generate ./...
-	$(MAKE) fmt
-
-fmt: $(GO_SOURCES)	## format go sources
-	gofmt -w -s -l $^
-
-# if included update the makefile subtree to the latest version
-check-makefile-remote:
-	git remote | grep makefile || git remote add makefile https://github.com/remerge/go-makefile.git
-
-update-makefile: check-makefile-remote
-	git subtree pull --squash --prefix=$(MKF_PREFIX) makefile master
 
 # External tools
 
@@ -43,6 +27,33 @@ update-makefile: check-makefile-remote
 TOOLS ?= $(MKF_PREFIX)/.tools
 $(TOOLS)/%:
 	test -x "$@" || GO111MODULE=off GOBIN=$(shell pwd)/$(dir $@) go get -u $*
+
+
+# Code maintenance
+
+GENERATE_SOURCES ?=
+
+gen: $(GENERATE_SOURCES)
+	go generate ./...
+	$(MAKE) fmt
+
+fmt:: .fmt-gofmt .fmt-goimports
+
+GOFMT_EXCLUDES ?= %.pb.go %_gen.go %_easyjson.go
+GOFMT_SOURCES = $(filter-out $(GOFMT_EXCLUDES),$(GO_SOURCES))
+
+.fmt-gofmt: $(GOFMT_SOURCES)	## format go sources
+	gofmt -w -s -l $^
+	
+.fmt-goimports: $(TOOLS)/golang.org/x/tools/cmd/goimports $(GOFMT_SOURCES)	## group and correct imports
+	$< -w -l $(GOFMT_SOURCES)
+
+# if included update the makefile subtree to the latest version
+check-makefile-remote:
+	git remote | grep makefile || git remote add makefile https://github.com/remerge/go-makefile.git
+
+update-makefile: check-makefile-remote
+	git subtree pull --squash --prefix=$(MKF_PREFIX) makefile master
 
 clean::
 	rm -rf $(TOOLS)
@@ -87,27 +98,30 @@ watch: $(TOOLS)/github.com/cespare/reflex
 
 # Linting
 
-# *lint* target will run go fmt check, vet and revive. Revive
+# *lint* target will run go fmt check, vet, goimports and revive. Revive
 # config can be overriden by putting "revive.toml" into the build tree root.
 # Use "REVIVELINTER_EXCLUDES" to exclude files from revive.
+# Use "GOFMT_EXCLUDES" to exclude files from gofmt and goimports.
 # Use "VET_FLAGS" to define vet linter flags.
 
+lint:: .lint-mod-tidy .lint-fmt .lint-goimports .lint-vet .lint-revive .lint-fix ## run all linters
 
-lint:: .lint-mod-tidy .lint-fmt .lint-vet .lint-revive .lint-fix ## run all linters
+.lint-fmt: $(GOFMT_SOURCES) ## compare gofmt and goimports output
+	@DIFF=`gofmt -s -d $(GOFMT_SOURCES)` && test -z "$$DIFF" || echo "$$DIFF" && test -z "$$DIFF"
 
-.lint-fmt: $(GO_SOURCES) ## compare gofmt output
-	@DIFF=`gofmt -s -d $^` && echo "$$DIFF" && test -z "$$DIFF"
+.lint-goimports: $(TOOLS)/golang.org/x/tools/cmd/goimports $(GOFMT_SOURCES)
+	@DIFF=`$< -d $(GOFMT_SOURCES)` && test -z "$$DIFF" || echo "$$DIFF" && test -z "$$DIFF"
 
 .lint-vet: $(GO_SOURCES) go.mod ## run vet
 	go vet $(VET_FLAGS) ./...
 .NOTPARALLEL: .lint-vet
 
 REVIVE_CONFIG = $(or $(wildcard revive.toml),$(MKF_PREFIX)/revive.toml)
-.lint-revive: $(TOOLS)/github.com/remerge/revive $(GO_SOURCES) $(REVIVE_CONFIG)	## run revive linter
+.lint-revive: $(TOOLS)/github.com/mgechev/revive $(GO_SOURCES) $(REVIVE_CONFIG)	## run revive linter
 	$< -config $(REVIVE_CONFIG) -formatter friendly -exclude ./vendor/... $(REVIVELINTER_EXCLUDES) ./...
 
 .lint-fix: $(GO_SOURCES) ## run fix
-	@DIFF=`go tool fix -diff $^` && echo "$$DIFF" && test -z "$$DIFF"
+	@DIFF=`go tool fix -diff $^` && test -z "$$DIFF" || echo "$$DIFF" && test -z "$$DIFF"
 
 .lint-mod-tidy:	## check go mod tidy is applied
 	rm -f go.sum /tmp/$(PROJECT).go.mod.tidy.bak /tmp/$(PROJECT).go.mod.tidy
