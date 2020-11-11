@@ -54,7 +54,9 @@ GOFMT_SOURCES = $(filter-out $(GOFMT_EXCLUDES),$(GO_SOURCES))
 
 # if included update the makefile subtree to the latest version
 check-makefile-remote:
-	test -n "$(DISABLE_PRIVATE)" || git remote | grep makefile || git remote add makefile https://github.com/remerge/go-makefile.git && git fetch -a -p makefile
+ifeq ($(DISABLE_PRIVATE),"")
+	git remote | grep makefile || $$(git remote add makefile https://github.com/remerge/go-makefile.git && git fetch -a -p makefile)
+endif
 
 update-makefile: check-makefile-remote
 	git subtree pull --squash --prefix=$(MKF_PREFIX) makefile $(MKF_BRANCH)
@@ -111,7 +113,9 @@ watch: $(TOOLS)/github.com/cespare/reflex
 lint:: .lint-mkf .lint-mod-tidy .lint-fmt .lint-goimports .lint-vet .lint-revive .lint-fix ## run all linters
 
 .lint-mkf: check-makefile-remote
-	@test -n "$(DISABLE_PRIVATE)" || DIFF=`git diff --name-only --relative HEAD:$(MKF_PREFIX)/ makefile/$(MKF_BRANCH):./` && echo "$$DIFF" && test -z "$$DIFF"
+ifeq ($(DISABLE_PRIVATE),"")
+	DIFF=`git diff --name-only --relative HEAD:$(MKF_PREFIX)/ makefile/$(MKF_BRANCH):./` && echo "$$DIFF" && test -z "$$DIFF"
+endif
 .PHONY: .lint-mkf
 
 .lint-fmt: $(GOFMT_SOURCES) ## compare gofmt and goimports output
