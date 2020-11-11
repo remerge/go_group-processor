@@ -38,6 +38,8 @@ jobs:
             - modules-v1-{{ checksum "go.mod" }}
             - modules-v1-
       - run:
+          name: Build system update
+      - run:
           name: Lint
           command: make lint
       - run:
